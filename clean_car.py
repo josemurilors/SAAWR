@@ -9,20 +9,14 @@ Usage:
 import re
 from pathlib import Path
 
-from gta_utils import safe_write, read_lines, ENCODING, BEGIN_MARKER, END_MARKER
+from gta_utils import safe_write, read_lines, ENCODING, BEGIN_MARKER, END_MARKER, get_game_paths
 
 # ─── Paths ───────────────────────────────────────────────────────────
-GAME_DIR = Path(__file__).resolve().parent.parent
-BASE = GAME_DIR / "modloader" / "novos-carros"
+_paths = get_game_paths()
+BASE = _paths["modloader_vehicles"]
 DATA = BASE / "data"
 TRANSITO = BASE / "add-transito"
-AUDIO_CFG = (
-    GAME_DIR
-    / "modloader"
-    / "$fastman92 limit adjuster"
-    / "data"
-    / "gtasa_vehicleAudioSettings.cfg"
-)
+AUDIO_CFG = _paths["audio_cfg"]
 CARG_PATH = TRANSITO / "cargrp.dat"
 
 # ─── Cores ───────────────────────────────────────────────────────────

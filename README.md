@@ -1,9 +1,37 @@
 # SA - AWR (Add Without Replace)
 
-Ferramentas para gerenciar veículos adicionados ao GTA San Andreas sem substituir,
+Ferramentas para gerenciar veículos e armas adicionados ao GTA San Andreas sem substituir,
 usando **modloader** + **fastman92 limit adjuster**.
 
-Método baseado no tutorial da [MixMods: Adicionar carros sem substituir](https://www.mixmods.com.br/2020/02/tutorial-adicionar-carros-sem-substituir/).
+Método baseado nos tutoriais da MixMods:
+- [Adicionar carros sem substituir](https://www.mixmods.com.br/2020/02/tutorial-adicionar-carros-sem-substituir/)
+- [Adicionar armas sem substituir](https://www.mixmods.com.br/2019/02/tutorial-adicionar-armas-sem-substituir/)
+
+---
+
+## Configuração
+
+Antes de usar, copie `config.ini.example` para `config.ini` e ajuste os caminhos:
+
+```bash
+cp config.ini.example config.ini
+```
+
+Edite `config.ini` com os caminhos corretos da sua instalação:
+
+```ini
+[paths]
+game_dir = /mnt/sda1/games/GTA San Andreas
+modloader_vehicles = modloader/novos-carros
+modloader_weapons = modloader/novas-armas
+fastman92_dir = modloader/$fastman92 limit adjuster
+game_data = data
+
+[weapon_config]
+weapon_id_start = 12400
+vehicle_id_start = 12501
+weapon_config_file = data/gtasa_weapon_config.dat
+```
 
 ---
 
@@ -13,25 +41,34 @@ Método baseado no tutorial da [MixMods: Adicionar carros sem substituir](https:
 |--------|--------|
 | `add_car.py` | Adicionar veículos novos automaticamente |
 | `clean_car.py` | Listar instalados e limpar resíduos de veículos deletados |
+| `add_weapon.py` | Adicionar armas novas automaticamente |
+| `clean_weapon.py` | Listar instalados e limpar resíduos de armas deletadas |
 | `gta_utils.py` | Utilitários compartilhados (não executa sozinho) |
 
-> `gta_utils.py` é um **módulo de suporte** importado pelos outros dois scripts.
+> `gta_utils.py` é um **módulo de suporte** importado pelos outros scripts.
 > Ele fornece escrita segura com backup (`.bak`), leitura de arquivos com encoding
-> `cp1252` e os marcadores `BEGIN/END` que delimitam veículos gerados no arquivo
-> de áudio. Não precisa ser rodado manualmente.
-
-> **⚠ Status atual:** Os scripts funcionam apenas para **carros/veículos**.
-> Adicionar armas sem substituir está nos planos futuros.
+> `cp1252`, carregamento de configuração e os marcadores `BEGIN/END` que delimitam
+> veículos/armas gerados nos arquivos globais.
 
 ---
 
 ## Como o método funciona
+
+### Veículos
 
 O GTA SA original suporta **212 veículos** (IDs 400–611). Para adicionar novos sem substituir:
 
 1. **fastman92 limit adjuster** expande os limites do jogo (handling, IDE, áudio, IDs)
 2. **Modloader** lê arquivos `.txt` em pastas e mescla com os dados originais
 3. Cada veículo novo fica numa pasta com `.dff` + `.txd` + `linhas.txt` + `.fxt`
+
+### Armas
+
+O GTA SA original suporta **53 armas** (IDs 321–373). Para adicionar novas sem substituir:
+
+1. **fastman92 limit adjuster** expande os limites de tipos de arma
+2. **Modloader** lê arquivos `.txt` em pastas e mescla com os dados originais
+3. Cada arma nova fica numa pasta com `.dff` + `.txd` + `linhas_arma.txt` + `.fxt`
 
 ### Dependências
 
@@ -43,9 +80,7 @@ O GTA SA original suporta **212 veículos** (IDs 400–611). Para adicionar novo
 
 > ⚠ **Importante:** O uso do **fastman92 limit adjuster** em conjunto com o
 > **[Open Limit Adjuster (OLA)](https://www.mixmods.com.br/2014/09/iiivcsa-open-limit-adjuster.html)**
-> é **altamente recomendado**. O OLA gerencia os limites de forma automática
-> (`Vehicle Models`, `VehicleStructs`, `Cargrp cars per group`, etc).
-> Se você usa OLA, **não edite** a linha `Vehicle Models` no .ini do fastman92.
+> é **altamente recomendado**. O OLA gerencia os limites de forma automática.
 
 ### Configuração do fastman92
 
@@ -58,27 +93,12 @@ Number of bike lines = 30
 Count of killable model IDs = 19601
 Make paintjobs work for any ID = 1
 Enable vehicle audio loader = 1
+
+; Para armas:
+Weapon Models = 51
+Enable weapon type loader = 1
+Weapon type loader, number of type IDs = 80
 ```
-
----
-
-### Sincronizar trânsito (`--sync`)
-
-Se você tem veículos instalados que não aparecem no trânsito (só por trainer),
-roda o `--sync` que ele adiciona todos ao `cargrp.dat` automaticamente:
-
-```bash
-python ferramentas/add_car.py --sync
-```
-
-```
-✓ 8 entrada(s) adicionada(s) ao cargrp.dat
-```
-
-Útil quando:
-- Você instalou veículos manualmente antes do script existir
-- Algo corrompeu o `cargrp.dat`
-- Quer garantir que tudo está circulando
 
 ---
 
@@ -104,11 +124,8 @@ O **nome do arquivo** vira o nome no jogo. O **conteúdo** é o veículo referê
   (conteúdo: "infernus")    →  clona do Infernus
 ```
 
-Anos de 4 dígitos no final do nome são convertidos automaticamente (`2015` → `'15`).
-
 ### 3. (Opcional) Nome curto personalizado
 
-Por padrão, o script gera um nome curto automático de até 7 caracteres.
 Para forçar um nome específico, use **formato de 2 linhas** no `.txt`:
 
 ```
@@ -116,145 +133,101 @@ lambo
 infernus
 ```
 
-| Linha | Conteúdo |
-|-------|----------|
-| 1ª | Nome curto desejado (≤7 chars, único) |
-| 2ª | Veículo referência para clonar |
-
-Sem a 1ª linha, o comportamento é o mesmo de antes (só a referência).
-
 ### 4. Roda
 
 ```bash
 python ferramentas/add_car.py
 ```
 
+---
+
+## add_weapon.py — Adicionar arma
+
+### 1. Cria a pasta
+
 ```
-Veículos pendentes encontrados: 1
+modloader/novas-armas/
+└── Desert Eagle Neon/
+    ├── deagle.dff               ← modelo da arma
+    ├── deagle.txd               ← textura da arma
+    ├── deagleicon.txd           ← ícone da arma (opcional, renomeado automaticamente)
+    └── "Desert Eagle Neon.txt"  ← ver passo 2
+```
+
+### 2. Cria o `.txt`
+
+O **nome do arquivo** vira o nome no jogo. O **conteúdo** é a arma referência
+(comportamento serão clonados dela).
+
+```
+"Desert Eagle Neon.txt"  →  display: "Desert Eagle Neon"
+  (conteúdo: "desert_eagle")  →  clona do Desert Eagle
+```
+
+### 3. (Opcional) Nome curto personalizado
+
+Para forçar um nome específico, use **formato de 2 linhas** no `.txt`:
+
+```
+deaglneon
+desert_eagle
+```
+
+### 4. Roda
+
+```bash
+python ferramentas/add_weapon.py
+```
+
+```
+Armas pendentes encontradas: 1
 
 ──────────────────────────────────────────────────
-Pasta: lamborghini-gallardo-2015
+Pasta: Desert Eagle Neon
 ──────────────────────────────────────────────────
-  → .txt: 'Lamborghini Gallardo 2015' → display: 'Lamborghini Gallardo '15'
-  → Clone de: infernus
-  ✓ Referência: infernus (tipo: car, classe: executive)
-  ✓ Handling de referência encontrado
-  ✓ Próximo ID: 12508
-  ✓ Nome curto: lambo (5 chars)
-  ✓ qualquer.dff → lambo.dff
-  ✓ qualquer.txd → lambo.txd
-  ✓ linhas.txt criado
-  ✓ lambo.fxt criado ('Lamborghini Gallardo '15')
-  ✓ Áudio adicionado (clonado de infernus)
-  ✓ Adicionado a CASUAL_RICH, BUSINESS no cargrp.dat
-  ✓ Pasta renomeada: lamborghini-gallardo-2015 → 12508-lamborghini-gallardo-2015
+  → .txt: 'Desert Eagle Neon' → display: 'Desert Eagle Neon'
+  → Clone de: desert_eagle
+  ✓ Referência encontrada no default.ide (ID: 348)
+  ✓ Linha de comportamento encontrada no weapon.dat
+  ✓ Próximo ID: 12400
+  ✓ Nome curto: deaglneon (8 chars)
+  ✓ deagle.dff → deaglneon.dff
+  ✓ deagle.txd → deaglneon.txd
+  ✓ deagleicon.txd → deaglneonicon.txd
+  ✓ linhas_arma.txt criado
+  ✓ deaglneon.fxt criado ('Desert Eagle Neon')
 
-  ✅ Lamborghini Gallardo '15 (ID 12508, lambo) pronto!
+  ✅ Desert Eagle Neon (ID 12400, deaglneon) pronto!
+  Pasta: 12400-desert-eagle-neon
+  Próximo passo: Execute o aplicativo 'Gerar Free IDs List' do fastman92
 ```
 
-A pasta é **renomeada automaticamente** para `{ID}-{nome-normalizado}`.
+### 5. Configuração do fastman92 para armas
 
-Pode deixar várias pastas pendentes de uma vez — o script processa todas em ordem.
+Após adicionar armas, execute o **"Gerar Free IDs List"** do fastman92
+para gerar a lista de IDs livres. Isso atualiza o arquivo
+`gtasa_weapon_config.dat` automaticamente.
 
 ---
 
-## Segurança: Backups automáticos
-
-Sempre que o script altera um arquivo global (`cargrp.dat`,
-`gtasa_vehicleAudioSettings.cfg`), ele **cria um `.bak` automaticamente**
-antes de escrever:
-
-```
-modloader/add-transito/cargrp.bak
-modloader/$fastman92 limit adjuster/data/gtasa_vehicleAudioSettings.cfg.bak
-```
-
-Se algo der errado (encoding incorreto, interrupção), é só restaurar o `.bak`.
-
----
-
-## Gerenciamento de áudio: Marcadores `BEGIN / END`
-
-O `add_car.py` agora delimita os veículos gerados com marcadores fixos:
-
-```ini
-# BEGIN GENERATED VEHICLES
-lambo   0   38  37  1  0.9 ...
-audib6  0   38  37  1  0.9 ...
-# END GENERATED VEHICLES
-;the end
-```
-
-Isso permite que o `clean_car.py` identifique resíduos **de forma cirúrgica**:
-apenas o que está dentro dos marcadores é escaneado, sem tocar em entradas
-originais ou comentários do fastman92.
-
----
-
-## clean_car.py — Listar e limpar resíduos
+## clean_car.py — Listar e limpar resíduos de veículos
 
 ```bash
 python ferramentas/clean_car.py
 ```
 
-Lista todos os veículos instalados e verifica se há entradas fantasmas no
-**áudio** (`gtasa_vehicleAudioSettings.cfg`) e no **trânsito** (`cargrp.dat`)
-de veículos que foram deletados.
-
-```
-Veículos instalados:
-  ID       Modelo    Display                           Pasta
-  ──────── ───────── ───────────────────────────────── ─────────────────────────
-  12501    hfr92     Honda CBR900RR Fireblade '92      12501-honda-fireblade-92
-  12507    audib6    Audi A4                           12507-audi-a4-b6-sline
-
-Nenhum resíduo encontrado. Tudo limpo!
-```
-
-Se encontrar resíduos, pergunta se quer removê-los:
-
-```
-Resíduos encontrados (2):
-
-  Áudio (gtasa_vehicleAudioSettings.cfg):
-    xxxxxxxx  → linha 286
-
-  Trânsito (cargrp.dat):
-    xxxxxxxx  → POPCYCLE_GROUP_CASUAL_RICH
-
-Remover resíduos? (s/N):
-```
+Lista todos os veículos instalados e verifica resíduos no áudio e trânsito.
 
 ---
 
-## O que o `add_car.py` faz
+## clean_weapon.py — Listar e limpar resíduos de armas
 
-| # | Ação | Detalhe |
-|---|------|---------|
-| 1 | Identifica pendentes | Pastas com `.dff` + `.txd` + `.txt` sem `linhas.txt` |
-| 2 | Lê o `.txt` | Nome → display name. Conteúdo → veículo p/ clonar |
-| 3 | Define o ID | **primeiro gap** a partir de 12501 (reusa IDs de veículos deletados) |
-| 4 | Gera nome curto | ≤7 chars, sem colisão |
-| 5 | Renomeia `.dff`/`.txd` | Evita conflito com veículos originais |
-| 6 | Clona handling | Copia linha de handling do veículo referência |
-| 7 | Gera `linhas.txt` | 4 seções: IDE, Handling, Carcols, Carmods |
-| 8 | Gera `.fxt` | Nome que aparece ao entrar no veículo |
-| 9 | Adiciona áudio | Insere antes de `;the end` no arquivo do fastman92 |
-| 10 | Adiciona ao trânsito | Insere no `cargrp.dat` no grupo da classe |
-| 11 | Renomeia a pasta | `{ID}-{nome-normalizado}` |
-| 12 | Valida | IDs, nomes, arquivos necessários |
+```bash
+python ferramentas/clean_weapon.py
+```
 
-### Clonagem do veículo referência
-
-| Item | Origem |
-|------|--------|
-| Tipo (`car`, `bike`, `boat`...) | vehicles.ide → coluna `Type` |
-| Classe (`executive`, `normal`...) | vehicles.ide → coluna `Class` |
-| Grupos de trânsito | Mapeado da classe para `cargrp.dat` |
-| Anims | vehicles.ide → coluna `Anims` |
-| Flags, CompRules, Rodas | vehicles.ide → colunas finais |
-| Handling | `data/handling.cfg` |
-| Áudio | `gtasa_vehicleAudioSettings.cfg` |
+Lista todas as armas instaladas e verifica resíduos no
+`gtasa_weapon_config.dat`, `WeaponLoader.txt` e `Weapons.ide`.
 
 ---
 
@@ -263,70 +236,70 @@ Remover resíduos? (s/N):
 ```
 GTA San Andreas/
 ├── ferramentas/
+│   ├── config.ini              ← configuração de caminhos
 │   ├── add_car.py
 │   ├── clean_car.py
+│   ├── add_weapon.py
+│   ├── clean_weapon.py
 │   └── README.md
+│
+├── data/
+│   ├── default.ide             ← armas originais (seção weap)
+│   ├── vehicleIDE              ← veículos originais
+│   └── weapon.dat              ← comportamento de armas
 │
 └── modloader/
     ├── $fastman92 limit adjuster/
     │   └── data/
-    │       └── gtasa_vehicleAudioSettings.cfg  ← áudio (add_car.py edita)
+    │       ├── gtasa_vehicleAudioSettings.cfg  ← áudio (add_car.py edita)
+    │       └── gtasa_weapon_config.dat         ← config armas (add_weapon.py edita)
     │
-    └── novos-carros/
-        ├── data/                         ← dados ORIGINAIS (NÃO EDITAR)
-        │   ├── vehicles.ide
-        │   ├── handling.cfg
-        │   ├── carcols.dat
-        │   └── carmods.dat
-        │
-        ├── add-transito/
-        │   └── cargrp.dat                ← trânsito (add_car.py edita)
-        │
-        ├── 12501-honda-fireblade-92/     ← instalado
-        ├── 12502-suzuki-gsx-r750rr/      ← instalado
-        └── 12508-lamborghini-gallardo-2015/  ← NOVO (pasta renomeada)
-            ├── lambo.dff
-            ├── lambo.txd
-            ├── lambo.fxt
-            ├── linhas.txt
-            └── "Lamborghini Gallardo 2015.txt"
+    ├── novos-carros/
+    │   ├── data/               ← dados ORIGINAIS (NÃO EDITAR)
+    │   ├── add-transito/       ← cargrp.dat
+    │   └── {ID}-{nome}/        ← veículos instalados
+    │
+    └── novas-armas/            ← NOVO
+        ├── data/               ← dados ORIGINAIS (NÃO EDITAR)
+        ├── WeaponLoader.txt    ← "IDE DATA\MAPS\Weapons.ide"
+        ├── Weapons.ide         ← seção weap/end com todas as armas
+        └── {ID}-{nome}/        ← armas instaladas
+            ├── {short}.dff
+            ├── {short}.txd
+            ├── {short}icon.txd
+            ├── {short}.fxt
+            ├── linhas_arma.txt
+            └── "Nome Arma.txt"
 ```
 
 ---
 
-## Mapeamento classe → trânsito
+## Segurança: Backups automáticos
 
-| Classe | Grupos no `cargrp.dat` |
-|---|---|
-| `richfamily` | CASUAL_RICH, BUSINESS |
-| `normal` | CASUAL_AVERAGE |
-| `poorfamily` | CASUAL_POOR |
-| `worker` | WORKERS |
-| `executive` | CASUAL_RICH, BUSINESS |
-| `motorbike` | BEACHFOLK, PARKFOLK, CASUAL_AVERAGE, CASUAL_RICH |
-| `moped` | BEACHFOLK, PARKFOLK |
-| `taxi` | WORKERS, BUSINESS, CLUBBERS |
-| `bicycle` | BEACHFOLK, PARKFOLK |
+Sempre que o script altera um arquivo global, ele **cria um `.bak` automaticamente**:
+
+```
+gtasa_vehicleAudioSettings.cfg.bak
+gtasa_weapon_config.dat.bak
+cargrp.dat.bak
+```
 
 ---
 
 ## Dicas
 
-**Spawnar**: [Djjr Car Spawner](https://www.mixmods.com.br/2015/12/djjr-car-spawner.html)
-ou [Car Spawner by fastman92](https://www.mixmods.com.br/2017/01/car-spawner-by-fastman92.html)
+**Spawnar veículos**: [Djjr Car Spawner](https://www.mixmods.com.br/2015/12/djjr-car-spawner.html)
 
 **Paintjobs**: `Make paintjobs work for any ID = 1` no .ini do fastman92
 
 **Peças tuning**: [Tutorial Daniel69](https://forum.mixmods.com.br/f37-tutoriais/t1714-como-adicionar-pecas-tuning-sem-substituir)
 
-**Funcionalidades especiais** (suspensão, faróis pop-up):
-`model_special_features.dat` com `Enable model special feature loader = 1`
-
 ---
 
 ## Referências
 
-- Tutorial original: [MixMods — Adicionar carros sem substituir](https://www.mixmods.com.br/2020/02/tutorial-adicionar-carros-sem-substituir/)
+- Tutorial carros: [MixMods — Adicionar carros sem substituir](https://www.mixmods.com.br/2020/02/tutorial-adicionar-carros-sem-substituir/)
+- Tutorial armas: [MixMods — Adicionar armas sem substituir](https://www.mixmods.com.br/2019/02/tutorial-adicionar-armas-sem-substituir/)
 - Fórum MixMods: [forum.mixmods.com.br](https://forum.mixmods.com.br)
 - Lista de IDs livres: [tuningmodparts.blogspot.com](http://tuningmodparts.blogspot.com.br/p/ids.html)
 
@@ -334,9 +307,10 @@ ou [Car Spawner by fastman92](https://www.mixmods.com.br/2017/01/car-spawner-by-
 
 ## Compartilhar
 
-Basta zipar a pasta `modloader/novos-carros/`. Cada veículo é auto-contido.
+Basta zipar as pastas `modloader/novos-carros/` ou `modloader/novas-armas/`.
+Cada item é auto-contido.
 
 Quem receber precisa de:
 1. **Modloader** instalado
-2. **fastman92 limit adjuster** instalado (com a [configuração](#configuração-do-fastman92) acima)
-3. O arquivo `gtasa_vehicleAudioSettings.cfg` com as entradas de áudio dos veículos
+2. **fastman92 limit adjuster** instalado (com a configuração acima)
+3. Os arquivos de configuração do fastman92 com as entradas de áudio/armas

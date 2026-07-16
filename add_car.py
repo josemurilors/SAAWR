@@ -14,20 +14,15 @@ import re
 import sys
 from pathlib import Path
 
-from gta_utils import safe_write, read_lines, ENCODING, BEGIN_MARKER, END_MARKER
+from gta_utils import safe_write, read_lines, ENCODING, BEGIN_MARKER, END_MARKER, get_game_paths
 
 # ─── Paths ───────────────────────────────────────────────────────────
-GAME_DIR = Path(__file__).resolve().parent.parent
-BASE = GAME_DIR / "modloader" / "novos-carros"
+_paths = get_game_paths()
+BASE = _paths["modloader_vehicles"]
 DATA = BASE / "data"
 TRANSITO = BASE / "add-transito"
-AUDIO_CFG = (
-    GAME_DIR
-    / "modloader"
-    / "$fastman92 limit adjuster"
-    / "data"
-    / "gtasa_vehicleAudioSettings.cfg"
-)
+AUDIO_CFG = _paths["audio_cfg"]
+VEHICLE_ID_START = _paths["vehicle_id_start"]
 
 STOCK_IDS = set(range(400, 612))
 
@@ -151,8 +146,7 @@ def get_used_ids():
 
 def get_next_available_id():
     used = get_used_ids()
-    start = 12501
-    nid = start
+    nid = VEHICLE_ID_START
     while nid in used:
         nid += 1
     return nid
