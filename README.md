@@ -1,6 +1,6 @@
-# Ferramentas para GTA SA — Adicionar/Remover veículos novos
+# SA - AWR (Add Without Replace)
 
-Conjunto de scripts para gerenciar veículos adicionados sem substituir,
+Ferramentas para gerenciar veículos adicionados ao GTA San Andreas sem substituir,
 usando **modloader** + **fastman92 limit adjuster**.
 
 Método baseado no tutorial da [MixMods: Adicionar carros sem substituir](https://www.mixmods.com.br/2020/02/tutorial-adicionar-carros-sem-substituir/).
