@@ -20,6 +20,9 @@ Método baseado no tutorial da [MixMods: Adicionar carros sem substituir](https:
 > `cp1252` e os marcadores `BEGIN/END` que delimitam veículos gerados no arquivo
 > de áudio. Não precisa ser rodado manualmente.
 
+> **⚠ Status atual:** Os scripts funcionam apenas para **carros/veículos**.
+> Adicionar armas sem substituir está nos planos futuros.
+
 ---
 
 ## Como o método funciona
