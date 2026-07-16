@@ -13,6 +13,12 @@ Método baseado no tutorial da [MixMods: Adicionar carros sem substituir](https:
 |--------|--------|
 | `add_car.py` | Adicionar veículos novos automaticamente |
 | `clean_car.py` | Listar instalados e limpar resíduos de veículos deletados |
+| `gta_utils.py` | Utilitários compartilhados (não executa sozinho) |
+
+> `gta_utils.py` é um **módulo de suporte** importado pelos outros dois scripts.
+> Ele fornece escrita segura com backup (`.bak`), leitura de arquivos com encoding
+> `cp1252` e os marcadores `BEGIN/END` que delimitam veículos gerados no arquivo
+> de áudio. Não precisa ser rodado manualmente.
 
 ---
 
