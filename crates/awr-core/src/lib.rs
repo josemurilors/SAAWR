@@ -13,6 +13,7 @@ pub mod ids;
 pub mod injector;
 pub mod inventory;
 pub mod meta;
+pub mod pack;
 pub mod paths;
 pub mod references;
 #[cfg(test)]

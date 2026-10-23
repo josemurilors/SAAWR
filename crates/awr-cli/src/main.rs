@@ -2,11 +2,11 @@ use awr_core::{
     checker::{self, Severity},
     config::AppSettings,
     injector::{InjectVehicle, Injector},
-    inventory, meta,
+    inventory, meta, pack,
     paths::{self, InstallInfo},
     references, validators,
 };
-use std::{path::PathBuf, process::ExitCode, time::SystemTime};
+use std::{path::Path, path::PathBuf, process::ExitCode, time::SystemTime};
 
 const USAGE: &str = "uso: awr-cli <comando> [--gta <pasta do GTA SA>]
   status
@@ -77,30 +77,15 @@ fn run(args: &[String]) -> Result<(), String> {
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .map_or(0, |d| d.as_secs());
             // --pack <folder> finds the car and its extras by the usual pack layout
-            let pack = opt(args, "--pack").map(PathBuf::from);
-            let find = |flag: &str, rel: String| {
-                opt(args, flag)
-                    .map(PathBuf::from)
-                    .or_else(|| pack.as_ref().map(|p| p.join(rel)).filter(|p| p.exists()))
-            };
-            let dff = find("--dff", format!("{reference}.dff")).ok_or("falta --dff ou --pack")?;
-            let txd = find("--txd", format!("{reference}.txd")).ok_or("falta --txd ou --pack")?;
-            let paintjobs = find("--paintjobs", "Paintjobs".into());
-            let parts = find("--parts", "Tuning Parts".into());
-            let ivfc = find("--ivfc", "IVF Colors/ImVehFt/colors".into()).and_then(|p| {
-                if p.is_dir() {
-                    std::fs::read_dir(p)
-                        .ok()?
-                        .flatten()
-                        .map(|e| e.path())
-                        .find(|f| {
-                            f.extension()
-                                .is_some_and(|e| e.eq_ignore_ascii_case("ivfc"))
-                        })
-                } else {
-                    Some(p)
-                }
-            });
+            let found = opt(args, "--pack")
+                .map(|p| pack::discover(Path::new(p), reference))
+                .unwrap_or_default();
+            let flag = |f: &str| opt(args, f).map(PathBuf::from);
+            let dff = flag("--dff").or(found.dff).ok_or("falta --dff ou --pack")?;
+            let txd = flag("--txd").or(found.txd).ok_or("falta --txd ou --pack")?;
+            let paintjobs = flag("--paintjobs").or(found.paintjobs);
+            let parts = flag("--parts").or(found.parts);
+            let ivfc = flag("--ivfc").or(found.ivfc);
             let key = inj
                 .inject_vehicle(&InjectVehicle {
                     name,
