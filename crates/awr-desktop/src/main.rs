@@ -8,7 +8,7 @@ use awr_core::{
     checker::{self, Severity},
     config::AppSettings,
     fsutil, ide,
-    injector::{InjectVehicle, Injector, Traffic},
+    injector::{EditMod, InjectVehicle, Injector, Traffic},
     inventory::{self, InstalledMod},
     meta::{self, ModKind},
     paths::{self, InstallInfo},
@@ -111,6 +111,9 @@ struct ModDto {
     ivfc: bool,
     pack_handling: bool,
     traffic: String,
+    /// The traffic setting as the editor needs it: `auto`, `none` or `group:N`.
+    traffic_choice: String,
+    audio: bool,
 }
 
 #[derive(Serialize)]
@@ -266,6 +269,10 @@ fn mod_dto(m: &InstalledMod, groups: &[Group]) -> ModDto {
         ivfc: m.key.join("ImVehFt").is_dir(),
         pack_handling: meta.is_some_and(|x| x.pack_handling),
         traffic,
+        traffic_choice: meta
+            .and_then(|x| x.traffic_group.clone())
+            .unwrap_or_else(|| "none".to_string()),
+        audio: meta.is_some_and(|x| x.audio.is_some()),
     }
 }
 
@@ -603,6 +610,33 @@ async fn set_enabled(
         .map(|k| k.display().to_string())
 }
 
+/// Name, traffic and audio of an installed mod (the front end sends what the form holds).
+#[tauri::command]
+async fn edit_mod(
+    key: String,
+    name: String,
+    traffic: Option<TrafficDto>,
+    audio: Option<bool>,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let traffic = traffic.map(|t| match (t.kind.as_str(), t.index) {
+        ("none", _) => Traffic::None,
+        ("group", Some(i)) => Traffic::Group(i),
+        _ => Traffic::Auto,
+    });
+    with_injector(&state, |i| {
+        i.edit_mod(
+            &PathBuf::from(&key),
+            &EditMod {
+                name: &name,
+                traffic,
+                audio,
+            },
+        )
+    })
+    .map(|()| "salvo".to_string())
+}
+
 #[tauri::command]
 async fn remove(key: String, state: State<'_, AppState>) -> Result<String, String> {
     with_injector(&state, |i| i.remove(&PathBuf::from(&key))).map(|()| "removido".to_string())
@@ -630,6 +664,7 @@ fn main() {
             inject,
             set_enabled,
             remove,
+            edit_mod,
             repair
         ])
         .run(tauri::generate_context!())

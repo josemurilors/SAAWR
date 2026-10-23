@@ -28,6 +28,16 @@ pub struct Injector<'a> {
     pub id_floor: u32,
 }
 
+/// What can be changed on an installed mod without reinjecting it.
+pub struct EditMod<'a> {
+    /// In-game name (vehicles: rewritten in the `.fxt`) or display name (weapons).
+    pub name: &'a str,
+    /// Vehicles only: where it shows up in traffic.
+    pub traffic: Option<Traffic>,
+    /// Vehicles only: clone the reference's engine sound (or not).
+    pub audio: Option<bool>,
+}
+
 /// Where the new car shows up in traffic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Traffic {
@@ -196,6 +206,43 @@ impl Injector<'_> {
         let _ = fs::remove_dir(ml.join(STAGING));
         self.sync_fla()?;
         Ok(dest)
+    }
+
+    /// Edits an installed mod in place. The global lines are taken out with the old settings and
+    /// put back with the new ones (only while it is enabled; enabling later reads `meta.json`).
+    pub fn edit_mod(&self, key: &ModKey, req: &EditMod) -> Result<()> {
+        self.not_running()?;
+        let old = self.own_meta(key)?;
+        let name = req.name.trim();
+        if name.is_empty() {
+            return Err(AwrError::InvalidName("o nome não pode ficar vazio".into()));
+        }
+        let mut new = Meta {
+            name: name.to_string(),
+            ..old.clone()
+        };
+        if old.kind == ModKind::Vehicle {
+            if let Some(t) = req.traffic {
+                new.traffic_group = t.to_meta();
+            }
+            if let Some(on) = req.audio {
+                let has_line = self.reference(&old.reference)?.audio_line.is_some();
+                new.audio = (on && has_line).then(|| format!("clone:{}", old.reference));
+            }
+            if let Some(fxt) = &old.files.fxt {
+                let line = [&ide::fxt_line(&old.short, name)[..], b"\r\n"].concat();
+                fsutil::write_atomic(&key.join(fxt), &line)?;
+            }
+        }
+        let enabled = inventory::split_disabled(key).0;
+        if enabled {
+            self.globals(&old, false)?;
+        }
+        meta::write(key, &new)?;
+        if enabled {
+            self.globals(&new, true)?;
+        }
+        Ok(())
     }
 
     /// Folder rename (`. ` prefix) plus the mod's lines in the global files.
@@ -873,6 +920,82 @@ num_colors 1
         inj.remove(&on).unwrap();
         inj.remove(&again).unwrap();
         assert_eq!(read(&cfg), cfg0, "config back to the original bytes");
+    }
+
+    #[test]
+    fn editing_an_installed_car_moves_its_global_lines_and_keeps_the_rest() {
+        if !have_game_fixtures() {
+            return;
+        }
+        let (d, info, refs) = install();
+        let inj = Injector {
+            info: &info,
+            refs: &refs,
+            weapons: &[],
+            id_floor: 12500,
+        };
+        let ml = info.modloader.clone().unwrap();
+        let audio = info.fla_data().unwrap().join(AUDIO_CFG);
+        let traffic = ml.join(TRAFFIC_DIR).join("cargrp.dat");
+        let audio0 = read(&audio);
+        let f = d.path().join("gta_sa.exe");
+        let key = inj.inject_vehicle(&req("gtr34", "landstal", &f)).unwrap();
+        let traffic_auto = read(&traffic);
+
+        inj.edit_mod(
+            &key,
+            &EditMod {
+                name: "  Exército ~r~ Novo  ",
+                traffic: Some(Traffic::Group(29)),
+                audio: Some(false),
+            },
+        )
+        .unwrap();
+        let m = meta::read(&key).unwrap();
+        assert_eq!(
+            (m.name.as_str(), m.audio.clone()),
+            ("Exército ~r~ Novo", None)
+        );
+        assert_eq!(m.traffic_group.as_deref(), Some("group:29"));
+        assert_eq!(read(&audio), audio0, "audio line gone");
+        assert_ne!(
+            read(&traffic),
+            traffic_auto,
+            "traffic moved to the chosen group"
+        );
+        let fxt = String::from_utf8(read(&key.join("gtr34.fxt"))).unwrap();
+        assert_eq!(fxt.trim(), "GTR34 Exercito Novo");
+
+        // disabled: only meta and fxt change, the globals are untouched until it is enabled
+        let off = inj.set_enabled(&key, false).unwrap();
+        inj.edit_mod(
+            &off,
+            &EditMod {
+                name: "Parado",
+                traffic: Some(Traffic::Auto),
+                audio: Some(true),
+            },
+        )
+        .unwrap();
+        assert_eq!(read(&audio), audio0);
+        assert!(!traffic.exists());
+        let on = inj.set_enabled(&off, true).unwrap();
+        assert_ne!(read(&audio), audio0, "audio back, from the edited meta");
+        assert_eq!(read(&traffic), traffic_auto);
+
+        assert!(matches!(
+            inj.edit_mod(
+                &on,
+                &EditMod {
+                    name: "  ",
+                    traffic: None,
+                    audio: None
+                }
+            ),
+            Err(AwrError::InvalidName(_))
+        ));
+        inj.remove(&on).unwrap();
+        assert_eq!(read(&audio), audio0);
     }
 
     #[test]
