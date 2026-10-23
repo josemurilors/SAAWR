@@ -87,6 +87,12 @@ e inventário vazio; CI verde.
    ModLoader aceita linhas mistas e o cargrp por pasta. Se não aceitar: um `.txt` por
    tipo de arquivo (`handling.txt`, `vehicles.txt`, `carcols.txt`). Resultado entra
    no ESCOPO.md.
+   **Resultado (2026-10-23, `GTA SA - teste`, IDs 12500/12501):** linhas mistas em um
+   `linhas.txt` e um `.txt` por tipo foram aceitos (spawn, colisão e entrada OK). Só com OLA
+   o carro spawna voando (handling.cfg vanilla = 210 linhas): precisa do FLA com
+   `Apply handling.cfg patch = 1`. Áudio e `Apply ID limit patch` passam; `Enable model
+   special feature loader` crasha no load (access violation, EIP inválido) e fica fora do `plan()`.
+   **Pendente:** cargrp por pasta e áudio clonado (linha própria) não testados no jogo.
 1. `references.rs` — parse de `vehicles.ide` (seção `cars`) + `handling.cfg` do jogo →
    `Reference { name, kind, handling_line: Vec<u8>, ide_line, carcols_line }`.
    Teste: 212 veículos; `PCJ600` → Bike com linha `!` existente.

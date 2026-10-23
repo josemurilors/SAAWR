@@ -94,9 +94,7 @@ pub fn plan(n: &Needs) -> Vec<Want> {
             ),
             w("ADDONS", "Enable vehicle audio loader", 1),
             w("SPECIAL", "Make paintjobs work for any ID", 1),
-            // the special feature loader only works with the ID limit patch on
-            w("ID LIMITS", "Apply ID limit patch", 1),
-            w("ADDONS", "Enable model special feature loader", 1),
+            // not managed: ID limit + special feature loader crashed with OLA in the spike
         ]);
     }
     if n.max_cargrp_group_len > 23 {

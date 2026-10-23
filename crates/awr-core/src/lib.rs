@@ -9,6 +9,7 @@ pub mod fsutil;
 pub mod handling;
 pub mod ide;
 pub mod ids;
+pub mod injector;
 pub mod inventory;
 pub mod meta;
 pub mod paths;

@@ -157,8 +157,8 @@ Grafo de dependência: `awr-app → awr-core`, `awr-cli → awr-core`. Nunca o i
   `Enable weapon type loader`, `Weapon type loader, number of type IDs`,
   `Object info entries` (armas pedem linha no object.dat → subir este limite),
   `Cargrp cars per group`, `Make paintjobs work for any ID`,
-  `Enable model special feature loader` (exige `Apply ID limit patch = 1`, que
-  o sync ativa junto). `VehicleStructs` não é gerida: o OLA ajusta sozinho.
+  (`Apply ID limit patch` e `Enable model special feature loader` NÃO são geridas: o
+  special feature loader crashou junto do OLA no spike). `VehicleStructs` não é gerida: o OLA ajusta sozinho.
 - **`Count of killable model IDs` NÃO é do OLA:** os tutoriais mandam editá-la
   mesmo com OLA (≈ 12600 para IDs até 12599). O sync sempre a gerencia.
 - Algoritmo **por tipo de chave** (são grandezas diferentes):
