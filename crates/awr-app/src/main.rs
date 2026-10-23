@@ -125,7 +125,9 @@ struct App {
     settings: AppSettings,
     gta_text: String,
     game: Option<Game>,
-    mods: Vec<InstalledMod>,
+    mods: Vec<Row>,
+    filter_text: String,
+    filter_kind: Option<Kind>,
     findings: Vec<Finding>,
     queue: Vec<Item>,
     ref_filter: String,
@@ -147,6 +149,8 @@ impl App {
             settings,
             game: None,
             mods: vec![],
+            filter_text: String::new(),
+            filter_kind: None,
             findings: vec![],
             queue: vec![],
             ref_filter: String::new(),
@@ -201,7 +205,10 @@ impl App {
                 .modloader
                 .as_deref()
                 .map(inventory::scan)
-                .unwrap_or_default();
+                .unwrap_or_default()
+                .into_iter()
+                .map(Row::new)
+                .collect();
             self.findings = checker::check(&g.info);
         }
     }
@@ -366,9 +373,13 @@ impl App {
                     if item.include && problem.is_none() {
                         ready += 1;
                     }
-                    ui.group(|ui| {
-                        ui.set_width(ui.available_width());
+                    let kind = game
+                        .as_ref()
+                        .and_then(|g| g.refs.iter().find(|r| r.model == item.reference))
+                        .map_or(Kind::Car, |r| Kind::of(&r.kind));
+                    card(ui, !item.include, |ui| {
                         ui.horizontal(|ui| {
+                            icon(ui, kind, if item.include { GOLD } else { MUTED });
                             ui.checkbox(&mut item.include, "");
                             ui.add(egui::TextEdit::singleline(&mut item.name).desired_width(200.0));
                             ui.add(
@@ -407,6 +418,7 @@ impl App {
                             _ => ui.label(RichText::new(info).small().color(MUTED)),
                         };
                     });
+                    ui.add_space(6.0);
                 }
             });
         if let Some(n) = remove {
@@ -424,51 +436,110 @@ impl App {
     }
 
     fn right(&mut self, ui: &mut egui::Ui) {
-        ui.heading(RichText::new("Inventário").color(GOLD));
-        if self.mods.is_empty() {
-            ui.label(RichText::new("Nenhum mod instalado.").color(MUTED));
+        ui.horizontal(|ui| {
+            ui.heading(RichText::new("Instalados").color(GOLD));
+            ui.add(
+                egui::TextEdit::singleline(&mut self.filter_text)
+                    .hint_text("filtrar por nome")
+                    .desired_width(180.0),
+            );
+            ui.selectable_value(&mut self.filter_kind, None, "Todos");
+            for k in Kind::ALL {
+                ui.selectable_value(&mut self.filter_kind, Some(k), k.label());
+            }
+        });
+        ui.separator();
+        let text = self.filter_text.to_lowercase();
+        let rows: Vec<Row> = self
+            .mods
+            .iter()
+            .filter(|r| {
+                let kind_ok = self.filter_kind.is_none_or(|k| Some(k) == r.kind());
+                let text_ok = text.is_empty() || r.title().to_lowercase().contains(&text);
+                kind_ok && text_ok
+            })
+            .cloned()
+            .collect();
+        if rows.is_empty() {
+            ui.label(RichText::new("Nenhum mod para mostrar.").color(MUTED));
         }
-        let mods = self.mods.clone();
+        let groups: Vec<Group> = self
+            .game
+            .as_ref()
+            .map(|g| g.groups.clone())
+            .unwrap_or_default();
         egui::ScrollArea::vertical().show(ui, |ui| {
-            for m in mods {
-                let Some(meta) = m.meta.as_ref().filter(|x| x.kind == ModKind::Vehicle) else {
-                    let id = m.id.map_or("-".into(), |i| i.to_string());
+            for row in rows {
+                self.installed_card(ui, &row, &groups);
+                ui.add_space(6.0);
+            }
+        });
+    }
+
+    fn installed_card(&mut self, ui: &mut egui::Ui, row: &Row, groups: &[Group]) {
+        let m = &row.m;
+        let Some(meta) = m.meta.as_ref().filter(|x| x.kind == ModKind::Vehicle) else {
+            card(ui, true, |ui| {
+                ui.horizontal(|ui| {
+                    icon(ui, Kind::Car, MUTED);
+                    ui.label(RichText::new(file_name(&m.key)).color(MUTED));
                     ui.label(
-                        RichText::new(format!("{id:>6}  (terceiro)  {}", file_name(&m.key)))
+                        RichText::new("terceiro: não é alterado")
+                            .small()
                             .color(MUTED),
                     );
-                    continue;
-                };
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new(format!("{:>6}", meta.id)).monospace());
-                    let name = RichText::new(&meta.name);
-                    ui.label(if m.enabled { name } else { name.color(MUTED) });
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if self.confirm_delete.as_ref() == Some(&m.key) {
-                            if ui.button("Cancelar").clicked() {
-                                self.confirm_delete = None;
-                            }
-                            if ui.button(RichText::new("Confirmar").color(BAD)).clicked() {
-                                self.confirm_delete = None;
-                                let key = m.key.clone();
-                                self.act(|i| i.remove(&key).map(|()| "removido".into()));
-                            }
-                        } else {
-                            if ui.button("Excluir").clicked() {
-                                self.confirm_delete = Some(m.key.clone());
-                            }
-                            let label = if m.enabled { "ON" } else { "OFF" };
-                            if ui.button(RichText::new(label).color(GOLD)).clicked() {
-                                let key = m.key.clone();
-                                self.act(|i| {
-                                    i.set_enabled(&key, !m.enabled)
-                                        .map(|k| format!("{}", k.display()))
-                                });
-                            }
-                        }
-                    });
                 });
-            }
+            });
+            return;
+        };
+        card(ui, !m.enabled, |ui| {
+            let c = if m.enabled { GOLD } else { MUTED };
+            ui.horizontal(|ui| {
+                icon(ui, row.kind().unwrap_or(Kind::Car), c);
+                ui.vertical(|ui| {
+                    let name = RichText::new(&meta.name).strong();
+                    ui.label(if m.enabled { name } else { name.color(MUTED) });
+                    ui.label(RichText::new(row.details(groups)).small().color(MUTED));
+                });
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.label(RichText::new(meta.id.to_string()).monospace().color(MUTED));
+                    let label = if m.enabled { "ON" } else { "OFF" };
+                    let fill = if m.enabled {
+                        GOLD
+                    } else {
+                        Color32::from_gray(0x33)
+                    };
+                    let txt = RichText::new(label).strong().color(if m.enabled {
+                        Color32::BLACK
+                    } else {
+                        MUTED
+                    });
+                    if ui.add(egui::Button::new(txt).fill(fill)).clicked() {
+                        let key = m.key.clone();
+                        self.act(|i| {
+                            i.set_enabled(&key, !m.enabled)
+                                .map(|k| format!("{}", k.display()))
+                        });
+                    }
+                });
+            });
+            ui.horizontal(|ui| {
+                if self.confirm_delete.as_ref() == Some(&m.key) {
+                    if ui
+                        .button(RichText::new("Confirmar exclusão").color(BAD))
+                        .clicked()
+                    {
+                        self.confirm_delete = None;
+                        let key = m.key.clone();
+                        self.act(|i| i.remove(&key).map(|()| "removido".into()));
+                    }
+                    if ui.button("Cancelar").clicked() {
+                        self.confirm_delete = None;
+                    }
+                } else if ui.small_button("Excluir").clicked() {
+                    self.confirm_delete = Some(m.key.clone());
+                }
+            });
         });
     }
 
@@ -547,6 +618,173 @@ impl App {
             });
         });
     }
+}
+
+/// A row of the inventory: the mod plus what its folder holds.
+#[derive(Clone)]
+struct Row {
+    m: InstalledMod,
+    paintjobs: usize,
+    ivfc: bool,
+}
+
+impl Row {
+    fn new(m: InstalledMod) -> Self {
+        let short = m.meta.as_ref().map(|x| x.short.clone()).unwrap_or_default();
+        let paintjobs = std::fs::read_dir(&m.key)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter(|e| {
+                let n = e.file_name().to_string_lossy().to_lowercase();
+                n.strip_prefix(&short)
+                    .and_then(|r| r.strip_suffix(".txd"))
+                    .is_some_and(|d| !d.is_empty() && d.bytes().all(|b| b.is_ascii_digit()))
+            })
+            .count();
+        let ivfc = m.key.join("ImVehFt").is_dir();
+        Row { m, paintjobs, ivfc }
+    }
+
+    fn title(&self) -> String {
+        self.m
+            .meta
+            .as_ref()
+            .map_or_else(|| file_name(&self.m.key), |x| x.name.clone())
+    }
+
+    fn kind(&self) -> Option<Kind> {
+        let t = self.m.meta.as_ref()?.vehicle_type.as_deref()?;
+        Some(Kind::of(t))
+    }
+
+    /// `ref: uranus · tuning (14) · paintjobs (4) · cores IVF · tráfego: ...`
+    fn details(&self, groups: &[Group]) -> String {
+        let Some(m) = &self.m.meta else {
+            return String::new();
+        };
+        let mut v = vec![format!("ref: {}", m.reference)];
+        if !m.parts.is_empty() {
+            v.push(format!("tuning ({})", m.parts.len()));
+        }
+        if self.paintjobs > 0 {
+            v.push(format!("paintjobs ({})", self.paintjobs));
+        }
+        if self.ivfc {
+            v.push("cores IVF".into());
+        }
+        v.push(match m.traffic_group.as_deref() {
+            None => "sem tráfego".into(),
+            Some("auto") => "tráfego como a referência".into(),
+            Some(g) => {
+                let i: Option<usize> = g.strip_prefix("group:").and_then(|i| i.parse().ok());
+                let label = i
+                    .and_then(|i| groups.get(i))
+                    .map_or(g.to_string(), group_label);
+                format!("tráfego: {label}")
+            }
+        });
+        v.join(" · ")
+    }
+}
+
+/// The four vehicle families the UI tells apart.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Car,
+    Bike,
+    Boat,
+    Plane,
+}
+
+impl Kind {
+    const ALL: [Kind; 4] = [Kind::Car, Kind::Bike, Kind::Boat, Kind::Plane];
+
+    /// From the IDE type column (car, bike, bmx, boat, plane, heli, quad, ...).
+    fn of(t: &str) -> Kind {
+        match t {
+            "bike" | "bmx" => Kind::Bike,
+            "boat" => Kind::Boat,
+            "plane" | "heli" => Kind::Plane,
+            _ => Kind::Car,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Kind::Car => "Carros",
+            Kind::Bike => "Motos",
+            Kind::Boat => "Barcos",
+            Kind::Plane => "Aviões",
+        }
+    }
+}
+
+/// Small line icon per family, drawn with the painter (no image files).
+fn icon(ui: &mut egui::Ui, kind: Kind, color: Color32) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(34.0, 34.0), egui::Sense::hover());
+    let p = ui.painter_at(rect);
+    let stroke = egui::Stroke::new(1.8, color);
+    let at = |x: f32, y: f32| rect.min + egui::vec2(x, y);
+    let line = |pts: &[(f32, f32)]| {
+        p.add(egui::Shape::line(
+            pts.iter().map(|&(x, y)| at(x, y)).collect(),
+            stroke,
+        ));
+    };
+    match kind {
+        Kind::Car => {
+            line(&[
+                (3.0, 22.0),
+                (3.0, 16.0),
+                (9.0, 15.0),
+                (13.0, 9.0),
+                (23.0, 9.0),
+                (27.0, 15.0),
+                (31.0, 16.0),
+                (31.0, 22.0),
+                (3.0, 22.0),
+            ]);
+            p.circle_stroke(at(10.0, 23.0), 4.0, stroke);
+            p.circle_stroke(at(24.0, 23.0), 4.0, stroke);
+        }
+        Kind::Bike => {
+            p.circle_stroke(at(8.0, 23.0), 6.0, stroke);
+            p.circle_stroke(at(26.0, 23.0), 6.0, stroke);
+            line(&[(8.0, 23.0), (15.0, 14.0), (22.0, 14.0), (26.0, 23.0)]);
+            line(&[(22.0, 14.0), (24.0, 9.0), (28.0, 9.0)]);
+        }
+        Kind::Boat => {
+            line(&[
+                (3.0, 20.0),
+                (31.0, 20.0),
+                (26.0, 28.0),
+                (8.0, 28.0),
+                (3.0, 20.0),
+            ]);
+            line(&[(11.0, 20.0), (13.0, 13.0), (21.0, 13.0), (23.0, 20.0)]);
+            line(&[(17.0, 13.0), (17.0, 6.0)]);
+        }
+        Kind::Plane => {
+            line(&[(4.0, 17.0), (30.0, 17.0)]);
+            line(&[(14.0, 17.0), (19.0, 4.0), (23.0, 4.0), (21.0, 17.0)]);
+            line(&[(14.0, 17.0), (19.0, 30.0), (23.0, 30.0), (21.0, 17.0)]);
+            line(&[(4.0, 17.0), (2.0, 12.0)]);
+        }
+    }
+}
+
+/// Dark card with a thin border; `dim` fades it for disabled or skipped entries.
+fn card(ui: &mut egui::Ui, dim: bool, add: impl FnOnce(&mut egui::Ui)) {
+    let border = if dim { 0x22 } else { 0x2A };
+    egui::Frame::new()
+        .fill(Color32::from_rgb(0x1B, 0x1B, 0x1B))
+        .stroke(egui::Stroke::new(1.0, Color32::from_gray(border)))
+        .inner_margin(egui::Margin::same(10))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            add(ui);
+        });
 }
 
 /// Reference picker with a filter box at the top of the list.
