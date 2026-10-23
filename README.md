@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/josemurilors/SAAWR/actions/workflows/ci.yml"><img src="https://github.com/josemurilors/SAAWR/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <img src="https://img.shields.io/badge/status-Fase_1_em_andamento-yellow" alt="Status">
+  <img src="https://img.shields.io/badge/status-Fase_1_concluida-green" alt="Status">
   <img src="https://img.shields.io/badge/stack-Rust-orange" alt="Stack">
   <img src="https://img.shields.io/badge/jogo-GTA_SA_1.0_US-blue" alt="Jogo">
   <img src="https://img.shields.io/badge/licen%C3%A7a-MIT-green" alt="Licença">
@@ -17,7 +17,7 @@
 | | |
 | --- | --- |
 | **Versão** | 0.1.0 (v2, reescrita do zero) |
-| **Estado** | Fase 1: core de veículos pronto e testado; injector, interface e armas pendentes |
+| **Estado** | Fase 1 concluída (veículos: carro, moto, barco e avião testados no jogo); interface e armas pendentes |
 | **Contexto** | Projeto pessoal; segue os tutoriais MixMods de carros e armas sem substituir |
 | **Alvo** | Windows, GTA SA 1.0 US com ModLoader + fastman92 Limit Adjuster + Open Limit Adjuster |
 
@@ -153,7 +153,7 @@ Sem as fixtures do jogo (como na CI), os testes que dependem delas avisam "pulad
 - [x] Referências, IDs, clonagem de linhas, cargrp e áudio com testes contra os arquivos reais.
 - [ ] Teste no jogo do formato de pasta do ModLoader: aguarda o teste manual.
 - [ ] Injector (injetar, desativar, remover, reparar) + `awr-cli inject/remove`: depende do teste acima.
-- [ ] Fase 1: 3 veículos reais injetados e removidos numa cópia do jogo, sem resíduo.
+- [x] Fase 1: 4 veículos reais injetados e removidos numa cópia do jogo, sem resíduo.
 - [ ] Fase 2: interface egui de tela única.
 - [ ] Fase 3: armas. Fase 4: release `.exe` portable.
 
