@@ -3,6 +3,7 @@
 //! A crash in between leaves orphan global lines plus a staging folder, which
 //! `repair` knows how to clean (the staging `meta.json` names the orphan short).
 
+use crate::checker::{self, Severity};
 use crate::error::{AwrError, NotFoundKind, Result};
 use crate::fla::{self, Needs};
 use crate::inventory::{self, ModKey, CARS_DIR, DISABLED_PREFIX};
@@ -45,6 +46,11 @@ fn io_at<T>(path: &Path, r: io::Result<T>) -> Result<T> {
 
 impl Injector<'_> {
     pub fn inject_vehicle(&self, req: &InjectVehicle) -> Result<ModKey> {
+        let health = checker::check(self.info);
+        if let Some(e) = health.iter().find(|f| f.severity == Severity::Error) {
+            return Err(AwrError::Unhealthy(e.msg.clone()));
+        }
+        self.not_running()?;
         let ml = self.modloader()?;
         self.info
             .fla_ini()
@@ -114,6 +120,7 @@ impl Injector<'_> {
 
     /// Folder rename (`. ` prefix) plus the mod's lines in the global files.
     pub fn set_enabled(&self, key: &ModKey, enabled: bool) -> Result<ModKey> {
+        self.not_running()?;
         let m = self.own_meta(key)?;
         let (now, bare) = inventory::split_disabled(key);
         if now == enabled {
@@ -132,6 +139,7 @@ impl Injector<'_> {
     }
 
     pub fn remove(&self, key: &ModKey) -> Result<()> {
+        self.not_running()?;
         let m = self.own_meta(key)?;
         io_at(key, fs::remove_dir_all(key))?;
         self.globals(&m, false)?;
@@ -142,6 +150,7 @@ impl Injector<'_> {
     /// enabled mods have their lines, disabled and half-installed ones do not.
     /// Returns how many staging folders were dropped.
     pub fn repair(&self) -> Result<usize> {
+        self.not_running()?;
         let ml = self.modloader()?;
         let staging = ml.join(STAGING);
         let mut dropped = 0;
@@ -160,6 +169,13 @@ impl Injector<'_> {
         }
         self.sync_fla()?;
         Ok(dropped)
+    }
+
+    fn not_running(&self) -> Result<()> {
+        if checker::game_running(&self.info.root) {
+            return Err(AwrError::LockedByGame);
+        }
+        Ok(())
     }
 
     fn modloader(&self) -> Result<PathBuf> {
@@ -315,6 +331,8 @@ mod tests {
         fs::create_dir_all(fla.join("data")).unwrap();
         fs::write(r.join("gta_sa.exe"), b"").unwrap();
         fs::write(fla.join("$fastman92limitAdjuster.asi"), b"").unwrap();
+        fs::create_dir_all(r.join("modloader/OLA")).unwrap();
+        fs::write(r.join("modloader/OLA/III.VC.SA.LimitAdjuster.asi"), b"").unwrap();
         put(fla.join(crate::paths::FLA_INI), "fla_original.ini");
         put(fla.join("data").join(AUDIO_CFG), AUDIO_CFG);
         let info = detect_install(r).unwrap();

@@ -2,6 +2,7 @@
 
 pub mod audio;
 pub mod cargrp;
+pub mod checker;
 pub mod config;
 pub mod error;
 pub mod fla;

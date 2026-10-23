@@ -35,6 +35,8 @@ pub enum AwrError {
     },
     #[error("o jogo está aberto; feche o GTA SA antes de alterar arquivos")]
     LockedByGame,
+    #[error("instalação com problema: {0}")]
+    Unhealthy(String),
     #[error("mod de terceiro, não é alterado: {path}")]
     ForeignMod { path: PathBuf },
     #[error("meta.json inválido em {path}: {msg}")]

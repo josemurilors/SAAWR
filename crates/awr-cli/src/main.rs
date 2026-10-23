@@ -1,22 +1,25 @@
-use awr_core::{config::AppSettings, inventory, paths};
-use std::{path::PathBuf, process::ExitCode};
+use awr_core::{
+    checker::{self, Severity},
+    config::AppSettings,
+    injector::{InjectVehicle, Injector},
+    inventory, meta,
+    paths::{self, InstallInfo},
+    references, validators,
+};
+use std::{path::PathBuf, process::ExitCode, time::SystemTime};
 
-const USAGE: &str = "uso: awr-cli status [--gta <pasta do GTA SA>]";
+const USAGE: &str = "uso: awr-cli <comando> [--gta <pasta do GTA SA>]
+  status
+  doctor
+  inject --name <nome> --dff <arq> --txd <arq> --ref <modelo, ex. landstal> [--short <nome curto>] [--no-traffic] [--no-audio]
+  enable <pasta do mod>
+  disable <pasta do mod>
+  remove <pasta do mod>
+  repair";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let gta = args
-        .iter()
-        .position(|a| a == "--gta")
-        .and_then(|i| args.get(i + 1))
-        .map(PathBuf::from)
-        .or_else(|| AppSettings::load().gta_path);
-    let result = match (args.first().map(String::as_str), gta) {
-        (Some("status"), Some(gta)) => status(gta),
-        (Some("status"), None) => Err("informe --gta <pasta>".to_string()),
-        _ => Err(USAGE.to_string()),
-    };
-    match result {
+    match run(&args) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("erro: {e}");
@@ -25,8 +28,106 @@ fn main() -> ExitCode {
     }
 }
 
-fn status(gta: PathBuf) -> Result<(), String> {
+/// Value after `--flag`.
+fn opt<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
+    let i = args.iter().position(|a| a == flag)?;
+    args.get(i + 1).map(String::as_str)
+}
+
+fn need<'a>(args: &'a [String], flag: &str) -> Result<&'a str, String> {
+    opt(args, flag).ok_or_else(|| format!("falta {flag}\n{USAGE}"))
+}
+
+fn run(args: &[String]) -> Result<(), String> {
+    let settings = AppSettings::load();
+    let gta = opt(args, "--gta")
+        .map(PathBuf::from)
+        .or_else(|| settings.gta_path.clone())
+        .ok_or("informe --gta <pasta>")?;
     let info = paths::detect_install(&gta).map_err(|e| e.to_string())?;
+    let cmd = args.first().map(String::as_str).unwrap_or_default();
+    if cmd == "status" {
+        return status(&info);
+    }
+    if cmd == "doctor" {
+        return doctor(&info);
+    }
+    let refs = references::load_vehicles(&info.data(), info.fla_data().as_deref())
+        .map_err(|e| e.to_string())?;
+    let inj = Injector {
+        info: &info,
+        refs: &refs,
+        id_floor: settings.id_floor_vehicle,
+    };
+    let folder = || {
+        args.get(1)
+            .filter(|a| !a.starts_with("--"))
+            .map(PathBuf::from)
+            .ok_or_else(|| format!("informe a pasta do mod\n{USAGE}"))
+    };
+    match cmd {
+        "inject" => {
+            let name = need(args, "--name")?;
+            let short = opt(args, "--short")
+                .map(String::from)
+                .unwrap_or_else(|| validators::short_from(name));
+            let secs = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs());
+            let dff = PathBuf::from(need(args, "--dff")?);
+            let txd = PathBuf::from(need(args, "--txd")?);
+            let key = inj
+                .inject_vehicle(&InjectVehicle {
+                    name,
+                    short: &short,
+                    dff: &dff,
+                    txd: &txd,
+                    reference: need(args, "--ref")?,
+                    traffic: !args.iter().any(|a| a == "--no-traffic"),
+                    audio: !args.iter().any(|a| a == "--no-audio"),
+                    created: &meta::rfc3339(secs),
+                })
+                .map_err(|e| e.to_string())?;
+            println!("injetado: {}", key.display());
+        }
+        "enable" | "disable" => {
+            let key = inj
+                .set_enabled(&folder()?, cmd == "enable")
+                .map_err(|e| e.to_string())?;
+            println!("{}", key.display());
+        }
+        "remove" => {
+            inj.remove(&folder()?).map_err(|e| e.to_string())?;
+            println!("removido");
+        }
+        "repair" => {
+            let n = inj.repair().map_err(|e| e.to_string())?;
+            println!("reparado ({n} injeção(ões) interrompida(s) limpa(s))");
+        }
+        _ => return Err(USAGE.to_string()),
+    }
+    Ok(())
+}
+
+fn doctor(info: &InstallInfo) -> Result<(), String> {
+    let findings = checker::check(info);
+    for f in &findings {
+        let tag = match f.severity {
+            Severity::Error => "ERRO",
+            Severity::Warn => "aviso",
+        };
+        println!("{tag}: {}", f.msg);
+    }
+    if checker::has_errors(&findings) {
+        return Err("a instalação tem erros".into());
+    }
+    if findings.is_empty() {
+        println!("tudo certo");
+    }
+    Ok(())
+}
+
+fn status(info: &InstallInfo) -> Result<(), String> {
     let show = |label: &str, p: Option<PathBuf>| match p {
         Some(p) => println!("✓ {label}: {}", p.display()),
         None => println!("✗ {label}: não encontrado"),

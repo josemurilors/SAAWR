@@ -40,6 +40,22 @@ pub struct Meta {
     pub files: Files,
 }
 
+/// UTC timestamp for `created`, from Unix seconds (civil-from-days, no date crate).
+pub fn rfc3339(secs: u64) -> String {
+    let (days, rem) = ((secs / 86400) as i64, secs % 86400);
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    let (h, m, s) = (rem / 3600, rem % 3600 / 60, rem % 60);
+    format!("{year:04}-{month:02}-{day:02}T{h:02}:{m:02}:{s:02}Z")
+}
+
 pub fn read(dir: &Path) -> Result<Meta> {
     let path = dir.join(FILE);
     let bytes = fsutil::read(&path)?;
@@ -79,6 +95,12 @@ pub(crate) fn sample(id: u32, short: &str) -> Meta {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn formats_unix_seconds() {
+        assert_eq!(rfc3339(0), "1970-01-01T00:00:00Z");
+        assert_eq!(rfc3339(951_782_400 + 3661), "2000-02-29T01:01:01Z");
+    }
 
     #[test]
     fn round_trips() {
