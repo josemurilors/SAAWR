@@ -251,14 +251,63 @@ pub struct InjectWeapon<'a> {
     pub created: &'a str,
 }
 
+/// `(offset of the 32-byte name field, name)` of every texture in a RenderWare `.txd`.
+/// Layout: TXD (0x16) > texture native (0x15) > struct (0x01) = platform, filter, name[32].
+pub fn txd_textures(b: &[u8]) -> Vec<(usize, String)> {
+    let word = |o: usize| {
+        b.get(o..o + 4)
+            .map(|w| u32::from_le_bytes([w[0], w[1], w[2], w[3]]))
+    };
+    let mut out = vec![];
+    let mut o = 12; // inside the TXD chunk
+    while let (Some(t), Some(s)) = (word(o), word(o + 4)) {
+        let body = o + 12;
+        if t == 0x15 {
+            let at = body + 12 + 8;
+            if let Some(n) = b.get(at..at + 32) {
+                let end = n.iter().position(|&c| c == 0).unwrap_or(32);
+                out.push((at, String::from_utf8_lossy(&n[..end]).into_owned()));
+            }
+        }
+        o = body + s as usize;
+    }
+    out
+}
+
+/// HUD textures a weapon `.txd` carries: `{name}icon`, and `{name}crosshair` for scopes.
+const HUD_SUFFIXES: [&str; 2] = ["icon", "crosshair"];
+
+/// Renames the pack's HUD textures (`gun_dildo1icon`) to the new weapon's (`yardstickicon`)
+/// when there is exactly one of each kind and it is not already right.
+/// Returns the new file, or None if nothing needed changing.
+pub fn fix_hud_textures(txd: &[u8], short: &str) -> Option<Vec<u8>> {
+    let tex = txd_textures(txd);
+    let mut out = txd.to_vec();
+    let mut changed = false;
+    for suffix in HUD_SUFFIXES {
+        let want = format!("{short}{suffix}");
+        let found: Vec<_> = tex
+            .iter()
+            .filter(|(_, n)| n.to_ascii_lowercase().ends_with(suffix))
+            .collect();
+        if let [(at, name)] = found[..] {
+            if !name.eq_ignore_ascii_case(&want) && want.len() <= 31 {
+                out[*at..*at + 32].fill(0);
+                out[*at..*at + want.len()].copy_from_slice(want.as_bytes());
+                changed = true;
+            }
+        }
+    }
+    changed.then_some(out)
+}
+
 /// The HUD icon is the texture `{short}icon` inside the weapon's `.txd` (tutorial step 6).
-/// The names are stored as plain text in the file, so a byte search is enough to warn.
 pub fn has_icon(txd: &Path, short: &str) -> bool {
-    let needle = format!("{short}icon").to_ascii_lowercase();
+    let want = format!("{short}icon");
     fs::read(txd).is_ok_and(|b| {
-        b.to_ascii_lowercase()
-            .windows(needle.len())
-            .any(|w| w == needle.as_bytes())
+        txd_textures(&b)
+            .iter()
+            .any(|(_, n)| n.eq_ignore_ascii_case(&want))
     })
 }
 
@@ -329,9 +378,11 @@ impl Injector<'_> {
 
         let stage = ml.join(STAGING).join(&folder);
         io_at(&stage, fs::create_dir_all(&stage))?;
-        for (src, f) in [(req.dff, &m.files.dff), (req.txd, &m.files.txd)] {
-            io_at(src, fs::copy(src, stage.join(f)))?;
-        }
+        io_at(req.dff, fs::copy(req.dff, stage.join(&m.files.dff)))?;
+        // the pack's HUD textures are renamed to this weapon's; the source file is untouched
+        let txd = fsutil::read(req.txd)?;
+        let txd = fix_hud_textures(&txd, req.short).unwrap_or(txd);
+        fsutil::write_atomic(&stage.join(&m.files.txd), &txd)?;
         let ide = [
             b"weap\r\n".to_vec(),
             clone_ide(r, id, req.short),
@@ -421,6 +472,49 @@ mod tests {
         );
         let loader = loader_txt(&r[1], "REVOLVER", "revolver", 12400);
         assert!(loader.starts_with(b"IDE DATA\\MAPS\\revolver.ide\r\n$ REVOLVER"));
+    }
+
+    /// A TXD with the given texture names: header, then one native texture each.
+    fn fake_txd(names: &[&str]) -> Vec<u8> {
+        let mut b = vec![];
+        let chunk = |t: u32, body: &[u8]| {
+            [
+                &t.to_le_bytes()[..],
+                &(body.len() as u32).to_le_bytes(),
+                &0u32.to_le_bytes(),
+                body,
+            ]
+            .concat()
+        };
+        let mut natives = vec![];
+        for n in names {
+            let mut st = vec![0u8; 8];
+            let mut name = [0u8; 32];
+            name[..n.len()].copy_from_slice(n.as_bytes());
+            st.extend(name);
+            st.extend([0u8; 40]);
+            natives.extend(chunk(0x15, &chunk(0x01, &st)));
+        }
+        b.extend(chunk(0x16, &[chunk(0x01, &[0u8; 4]), natives].concat()));
+        b
+    }
+
+    #[test]
+    fn hud_textures_follow_the_new_name_without_touching_others() {
+        let txd = fake_txd(&["gun_dildo1icon", "WP00_skin"]);
+        let names = |b: &[u8]| txd_textures(b).into_iter().map(|t| t.1).collect::<Vec<_>>();
+        assert_eq!(names(&txd), ["gun_dildo1icon", "WP00_skin"]);
+        let fixed = fix_hud_textures(&txd, "yardstick").unwrap();
+        assert_eq!(names(&fixed), ["yardstickicon", "WP00_skin"]);
+        assert_eq!(fixed.len(), txd.len());
+        assert!(
+            fix_hud_textures(&fixed, "yardstick").is_none(),
+            "already right"
+        );
+        // no icon at all (the AUG pack): nothing to rename
+        assert!(fix_hud_textures(&fake_txd(&["aug", "weaponskin"]), "aug").is_none());
+        // two icons: ambiguous, left alone
+        assert!(fix_hud_textures(&fake_txd(&["aicon", "bicon"]), "x").is_none());
     }
 
     #[test]

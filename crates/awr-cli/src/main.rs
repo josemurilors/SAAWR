@@ -197,7 +197,7 @@ fn run(args: &[String]) -> Result<(), String> {
                 })
                 .map_err(|e| e.to_string())?;
             println!("injetada: {}", key.display());
-            if !weapons::has_icon(&txd, short) {
+            if !weapons::has_icon(&key.join(format!("{short}.txd")), short) {
                 println!("aviso: o .txd não tem a textura '{short}icon' (ícone do HUD); renomeie a textura do ícone no Magic TXD");
             }
         }
