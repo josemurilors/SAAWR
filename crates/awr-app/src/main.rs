@@ -13,7 +13,7 @@ use awr_core::{
     paths::{self, InstallInfo},
     references::{self, VehicleRef},
     validators,
-    weapons::{self, InjectWeapon, WeaponRef},
+    weapons::{self, InjectWeapon, Special, WeaponRef},
 };
 use eframe::egui::{self, Color32, RichText};
 use std::{
@@ -287,6 +287,7 @@ impl App {
                             reference: &item.reference,
                             created: &meta::rfc3339(secs),
                             own: item.files.weapon.as_ref().filter(|_| item.use_handling),
+                            special: Special::None,
                         });
                         match &res {
                             Ok(k) => logs.push(format!("injetada: {}", k.display())),

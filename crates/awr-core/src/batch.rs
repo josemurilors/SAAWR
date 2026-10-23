@@ -53,14 +53,35 @@ pub fn suggest_short(name: &str, taken: &BTreeSet<String>) -> String {
         s if s.is_empty() || !s.as_bytes()[0].is_ascii_lowercase() => format!("car{}", s),
         s => s,
     };
-    let base: String = base.chars().take(validators::SHORT_MAX).collect();
+    free_name(&base, validators::SHORT_MAX, taken)
+}
+
+/// Same for weapons: up to 15 characters, `_` allowed (`Desert Eagle Gold` -> `desert_eagle_go`).
+pub fn suggest_weapon_name(name: &str, taken: &BTreeSet<String>) -> String {
+    let words: Vec<String> = crate::text::fold_ascii(name)
+        .to_ascii_lowercase()
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(String::from)
+        .collect();
+    let base = words.join("_");
+    let base = match base.as_bytes().first() {
+        Some(b) if b.is_ascii_lowercase() => base,
+        _ => format!("wpn{base}"),
+    };
+    free_name(&base, 15, taken)
+}
+
+fn free_name(base: &str, max: usize, taken: &BTreeSet<String>) -> String {
+    let base: String = base.chars().take(max).collect();
+    let base = base.trim_end_matches('_').to_string();
     if !taken.contains(&base) {
         return base;
     }
     (2..100)
         .map(|n| {
             let tail = n.to_string();
-            let keep = validators::SHORT_MAX - tail.len();
+            let keep = max - tail.len();
             format!("{}{tail}", base.chars().take(keep).collect::<String>())
         })
         .find(|s| !taken.contains(s))
@@ -210,6 +231,19 @@ mod tests {
         );
         assert_eq!(suggest_short("800 GS", &set(&[])), "car800g");
         assert_eq!(suggest_short("???", &set(&[])), "car");
+    }
+
+    #[test]
+    fn weapon_names_allow_underscores_and_fifteen_characters() {
+        assert_eq!(
+            suggest_weapon_name("Desert Eagle Gold", &set(&[])),
+            "desert_eagle_go"
+        );
+        assert_eq!(
+            suggest_weapon_name("Pistola Parabéllum", &set(&["pistola_parabel"])),
+            "pistola_parabe2"
+        );
+        assert_eq!(suggest_weapon_name("9mm", &set(&[])), "wpn9mm");
     }
 
     #[test]

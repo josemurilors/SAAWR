@@ -828,6 +828,7 @@ num_colors 1
             reference: "DESERT_EAGLE",
             created: "2026-10-23T00:00:00Z",
             own: None,
+            special: crate::weapons::Special::None,
         };
         let key = inj.inject_weapon(&req).unwrap();
         assert!(key.ends_with("12400-revolver"));

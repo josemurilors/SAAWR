@@ -202,15 +202,20 @@ pub fn clone_object(r: &WeaponRef, short: &str) -> Option<Vec<u8>> {
 pub fn loader_txt(
     r: &WeaponRef,
     own: Option<&FoundWeapon>,
+    special: Special,
     name: &str,
     short: &str,
     model_id: u32,
 ) -> Vec<u8> {
     let mut out: Vec<Vec<u8>> = vec![format!("IDE DATA\\MAPS\\{short}.ide").into_bytes()];
-    match own {
-        Some(w) => out.extend(own_dat(&w.dat_lines, name, model_id)),
-        None => out.extend(clone_dat(r, name, model_id)),
-    }
+    let dat = match own {
+        Some(w) => own_dat(&w.dat_lines, name, model_id),
+        None => clone_dat(r, name, model_id),
+    };
+    out.extend(dat.into_iter().map(|l| match special {
+        Special::Binoculars => with_first_person_flag(&l),
+        _ => l,
+    }));
     out.extend(clone_object(r, short));
     out.into_iter()
         .flat_map(|l| [l, b"\r\n".to_vec()].concat())
@@ -246,6 +251,7 @@ fn is_line_of(l: &[u8], name: &str) -> bool {
 pub fn config_lines(
     r: &WeaponRef,
     own: Option<&FoundWeapon>,
+    special: Special,
     name: &str,
     type_id: u32,
 ) -> Vec<Vec<u8>> {
@@ -274,6 +280,17 @@ pub fn config_lines(
                 [&replace_spans(line, &edits)[..], b" ", r.name.as_bytes()].concat()
             }
         }
+    };
+    // a special weapon's parent decides what it is (silencer, jetpack, binoculars)
+    let main = match special.parent() {
+        Some(p) => {
+            let t = tokens(&main);
+            match t.get(10) {
+                Some(&parent) => replace_spans(&main, &[(parent, p.as_bytes())]),
+                None => [main.trim_ascii_end(), b" ", p.as_bytes()].concat(),
+            }
+        }
+        None => main,
     };
     let mut out = vec![main];
     out.extend(
@@ -321,6 +338,50 @@ pub fn config_remove(file: &[u8], name: &str) -> Vec<u8> {
     out
 }
 
+/// Weapons with a special behavior the tutorial handles by the config's parent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Special {
+    #[default]
+    None,
+    /// Pistol with silencer: parent `PISTOL_SILENCED`.
+    Silencer,
+    /// Parent `JETPACK_TYPE` (clone the `JETPACK` reference).
+    Jetpack,
+    /// Parent `BINOCULARS_TYPE` and the first-person flag in `weapon.dat`
+    /// (clone `NIGHTVISION`). Not verified in the game.
+    Binoculars,
+}
+
+impl Special {
+    pub fn parent(self) -> Option<&'static str> {
+        match self {
+            Special::None => None,
+            Special::Silencer => Some("PISTOL_SILENCED"),
+            Special::Jetpack => Some("JETPACK_TYPE"),
+            Special::Binoculars => Some("BINOCULARS_TYPE"),
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "silencer" => Special::Silencer,
+            "jetpack" => Special::Jetpack,
+            "binoculars" => Special::Binoculars,
+            _ => Special::None,
+        }
+    }
+}
+
+/// `weapon.dat` flags are the last column (hex); binoculars need the first-person bit (4).
+fn with_first_person_flag(line: &[u8]) -> Vec<u8> {
+    let t = tokens(line);
+    let Some(&(s, e)) = t.last() else {
+        return line.to_vec();
+    };
+    let old = u32::from_str_radix(&text(&line[s..e]), 16).unwrap_or(0);
+    replace_spans(line, &[((s, e), format!("{:x}", old | 4).as_bytes())])
+}
+
 pub struct InjectWeapon<'a> {
     pub short: &'a str,
     pub dff: &'a Path,
@@ -330,6 +391,7 @@ pub struct InjectWeapon<'a> {
     pub created: &'a str,
     /// The pack author's weapon lines, used instead of copies of the reference's.
     pub own: Option<&'a FoundWeapon>,
+    pub special: Special,
 }
 
 /// `(offset of the 32-byte name field, name)` of every texture in a RenderWare `.txd`.
@@ -455,7 +517,7 @@ impl Injector<'_> {
             },
             parts: vec![],
             pack_handling: false,
-            weapon_config: config_lines(r, req.own, &name, type_id)
+            weapon_config: config_lines(r, req.own, req.special, &name, type_id)
                 .iter()
                 .map(|l| fsutil::cp1252_to_string(l))
                 .collect(),
@@ -476,7 +538,7 @@ impl Injector<'_> {
         fsutil::write_atomic(&stage.join(format!("{}.ide", req.short)), &ide)?;
         fsutil::write_atomic(
             &stage.join("Loader.txt"),
-            &loader_txt(r, req.own, &name, req.short, id),
+            &loader_txt(r, req.own, req.special, &name, req.short, id),
         )?;
         meta::write(&stage, &m)?;
 
@@ -541,6 +603,29 @@ mod tests {
     }
 
     #[test]
+    fn special_weapons_set_the_parent_and_binoculars_the_first_person_flag() {
+        let r = refs();
+        let sil = config_lines(&r[1], None, Special::Silencer, "SILENT", 70);
+        assert!(
+            sil[0].ends_with(b"PISTOL_SILENCED"),
+            "{}",
+            String::from_utf8_lossy(&sil[0])
+        );
+        let bino = config_lines(&r[1], None, Special::Binoculars, "SEE", 71);
+        assert!(bino[0].ends_with(b"BINOCULARS_TYPE"));
+        assert_eq!(
+            with_first_person_flag(b"$ X USE 1 2 3 0"),
+            b"$ X USE 1 2 3 4"
+        );
+        assert_eq!(
+            with_first_person_flag(b"$ X USE 1 2 3 7001"),
+            b"$ X USE 1 2 3 7005"
+        );
+        let loader = loader_txt(&r[1], None, Special::Binoculars, "SEE", "see", 12400);
+        assert!(String::from_utf8_lossy(&loader).contains("12400"));
+    }
+
+    #[test]
     fn the_jetpack_is_cloneable_from_its_commented_lines() {
         let ide = [
             IDE,
@@ -564,7 +649,7 @@ end
             .find(|w| w.name == "JETPACK")
             .expect("jetpack parsed");
         assert_eq!(jet.model_id, 370);
-        let lines = config_lines(jet, None, "MYPACK", 80);
+        let lines = config_lines(jet, None, Special::None, "MYPACK", 80);
         assert!(lines[0].starts_with(b"80    MYPACK"));
         assert!(
             lines[0].ends_with(b"JETPACK_TYPE"),
@@ -585,7 +670,7 @@ end
             clone_object(&r[1], "revolver").unwrap(),
             b"revolver\t\t1250.0,\t2500.0\t0.99"
         );
-        let loader = loader_txt(&r[1], None, "REVOLVER", "revolver", 12400);
+        let loader = loader_txt(&r[1], None, Special::None, "REVOLVER", "revolver", 12400);
         assert!(loader.starts_with(b"IDE DATA\\MAPS\\revolver.ide\r\n$ REVOLVER"));
     }
 
@@ -635,20 +720,32 @@ end
     #[test]
     fn config_adds_at_the_end_with_parent_and_removes_cleanly() {
         let r = refs();
-        let out = config_add(CFG, &config_lines(&r[1], None, "REVOLVER", 70), "REVOLVER");
+        let out = config_add(
+            CFG,
+            &config_lines(&r[1], None, Special::None, "REVOLVER", 70),
+            "REVOLVER",
+        );
         let tail = String::from_utf8_lossy(&out[CFG.len()..]).into_owned();
         assert_eq!(
             tail,
             "70    REVOLVER        71   1   0   10   149  194   24  1.0 DESERT_EAGLE\r\n! SET_ASSOCIATED_WEAPON REVOLVER ROCKET\r\n"
         );
         assert_eq!(
-            config_add(&out, &config_lines(&r[1], None, "REVOLVER", 70), "REVOLVER"),
+            config_add(
+                &out,
+                &config_lines(&r[1], None, Special::None, "REVOLVER", 70),
+                "REVOLVER"
+            ),
             out
         );
         assert_eq!(config_remove(&out, "REVOLVER"), CFG);
         assert!(config_types(&out).contains(&70) && !config_types(CFG).contains(&70));
         // no newline at the end of the file: one is added before the new line
-        let bare = config_add(b"24 X", &config_lines(&r[0], None, "A", 70), "A");
+        let bare = config_add(
+            b"24 X",
+            &config_lines(&r[0], None, Special::None, "A", 70),
+            "A",
+        );
         assert!(bare.starts_with(b"24 X\n70") || bare.starts_with(b"24 X\r\n70"));
     }
 }

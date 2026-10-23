@@ -5,7 +5,8 @@ pub const SHORT_MAX: usize = 7;
 
 /// Suggests a short name from a friendly name: `"GT R34"` -> `"gtr34"`.
 pub fn short_from(name: &str) -> String {
-    name.chars()
+    crate::text::fold_ascii(name)
+        .chars()
         .filter(char::is_ascii_alphanumeric)
         .map(|c| c.to_ascii_lowercase())
         .take(SHORT_MAX)
@@ -67,6 +68,7 @@ mod tests {
     #[test]
     fn suggests_and_validates() {
         assert_eq!(short_from("GT R34 Skyline"), "gtr34sk");
+        assert_eq!(short_from("Exército Brasileiro"), "exercit");
         assert!(check_short("gtr34", |_| false).is_ok());
         for bad in ["", "gtr34sky", "GTR", "1abc", "gt-r"] {
             assert!(

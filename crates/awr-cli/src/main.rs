@@ -6,7 +6,7 @@ use awr_core::{
     inventory, meta, pack,
     paths::{self, InstallInfo},
     references, validators,
-    weapons::{self, InjectWeapon},
+    weapons::{self, InjectWeapon, Special},
 };
 use std::{path::Path, path::PathBuf, process::ExitCode, time::SystemTime};
 
@@ -17,7 +17,7 @@ const USAGE: &str = "uso: awr-cli <comando> [--gta <pasta do GTA SA>]
          [--paintjobs <pasta>] [--parts <pasta>] [--ivfc <arq>] [--short <nome curto>] [--traffic auto|none|<n° do grupo>] [--no-audio] [--no-pack-handling] [--cleo]
   groups
   weapons
-  inject-weapon --short <nome> --ref <ARMA, ex. DESERT_EAGLE> (--pack <pasta> | --dff <arq> --txd <arq>) [--no-pack-lines]
+  inject-weapon --short <nome> --ref <ARMA, ex. DESERT_EAGLE> (--pack <pasta> | --dff <arq> --txd <arq>) [--no-pack-lines] [--special silencer|jetpack|binoculars]
   batch <pasta com subpastas> [--ref <modelo padrão>] [--yes]
   enable <pasta do mod>
   disable <pasta do mod>
@@ -199,6 +199,7 @@ fn run(args: &[String]) -> Result<(), String> {
                     txd: &txd,
                     reference,
                     created: &meta::rfc3339(secs),
+                    special: Special::parse(opt(args, "--special").unwrap_or_default()),
                     own: found
                         .weapon
                         .as_ref()
