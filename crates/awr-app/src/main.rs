@@ -13,6 +13,7 @@ use awr_core::{
     paths::{self, InstallInfo},
     references::{self, VehicleRef},
     validators,
+    weapons::{self, WeaponRef},
 };
 use eframe::egui::{self, Color32, RichText};
 use std::{
@@ -72,6 +73,7 @@ fn theme(ctx: &egui::Context) {
 struct Game {
     info: InstallInfo,
     refs: Vec<VehicleRef>,
+    weapons: Vec<WeaponRef>,
     groups: Vec<Group>,
 }
 
@@ -183,7 +185,16 @@ impl App {
             let groups = fsutil::read(&info.data().join("cargrp.dat"))
                 .map(|f| cargrp::groups(&f))
                 .unwrap_or_default();
-            Ok(Game { info, refs, groups })
+            let weapons = info
+                .fla_data()
+                .and_then(|d| weapons::load_weapons(&info.data(), &d).ok())
+                .unwrap_or_default();
+            Ok(Game {
+                info,
+                refs,
+                weapons,
+                groups,
+            })
         });
         match loaded {
             Ok(g) => {
@@ -227,6 +238,7 @@ impl App {
         self.game.as_ref().map(|g| Injector {
             info: &g.info,
             refs: &g.refs,
+            weapons: &g.weapons,
             id_floor: self.settings.id_floor_vehicle,
         })
     }

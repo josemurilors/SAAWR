@@ -32,6 +32,24 @@ pub fn check_short(short: &str, taken: impl Fn(&str) -> bool) -> Result<()> {
     Ok(())
 }
 
+/// Weapon model names: up to 15 characters (tutorial), letters, digits and `_`.
+pub fn check_weapon_name(name: &str, taken: impl Fn(&str) -> bool) -> Result<()> {
+    let valid = (1..=15).contains(&name.len())
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+        && name.as_bytes()[0].is_ascii_lowercase();
+    if !valid {
+        return Err(AwrError::InvalidName(format!(
+            "'{name}': use 1 a 15 letras minúsculas, dígitos ou _, começando por letra"
+        )));
+    }
+    if taken(name) {
+        return Err(AwrError::DuplicateShort { short: name.into() });
+    }
+    Ok(())
+}
+
 /// IDE model names are limited to 23 characters.
 pub fn check_part_name(name: &str) -> Result<()> {
     if name.len() > 23 {

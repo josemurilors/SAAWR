@@ -6,6 +6,7 @@ use awr_core::{
     inventory, meta, pack,
     paths::{self, InstallInfo},
     references, validators,
+    weapons::{self, InjectWeapon},
 };
 use std::{path::Path, path::PathBuf, process::ExitCode, time::SystemTime};
 
@@ -15,6 +16,8 @@ const USAGE: &str = "uso: awr-cli <comando> [--gta <pasta do GTA SA>]
   inject --name <nome> --ref <modelo, ex. uranus> (--pack <pasta do mod> | --dff <arq> --txd <arq>)
          [--paintjobs <pasta>] [--parts <pasta>] [--ivfc <arq>] [--short <nome curto>] [--traffic auto|none|<n° do grupo>] [--no-audio] [--no-pack-handling]
   groups
+  weapons
+  inject-weapon --short <nome> --ref <ARMA, ex. DESERT_EAGLE> (--pack <pasta> | --dff <arq> --txd <arq>)
   batch <pasta com subpastas> [--ref <modelo padrão>] [--yes]
   enable <pasta do mod>
   disable <pasta do mod>
@@ -66,9 +69,14 @@ fn run(args: &[String]) -> Result<(), String> {
     }
     let refs = references::load_vehicles(&info.data(), info.fla_data().as_deref())
         .map_err(|e| e.to_string())?;
+    let weapons = info
+        .fla_data()
+        .and_then(|d| weapons::load_weapons(&info.data(), &d).ok())
+        .unwrap_or_default();
     let inj = Injector {
         info: &info,
         refs: &refs,
+        weapons: &weapons,
         id_floor: settings.id_floor_vehicle,
     };
     let folder = || {
@@ -159,6 +167,38 @@ fn run(args: &[String]) -> Result<(), String> {
             }
             if !yes {
                 println!("(simulação; use --yes para injetar)");
+            }
+        }
+        "weapons" => {
+            for w in &weapons {
+                let kind = if w.melee { "corpo a corpo" } else { "fogo" };
+                println!("{:<18} {kind}  (modelo {})", w.name, w.model);
+            }
+        }
+        "inject-weapon" => {
+            let short = need(args, "--short")?;
+            let reference = need(args, "--ref")?;
+            let found = opt(args, "--pack")
+                .map(|p| pack::discover(Path::new(p), ""))
+                .unwrap_or_default();
+            let flag = |f: &str| opt(args, f).map(PathBuf::from);
+            let dff = flag("--dff").or(found.dff).ok_or("falta --dff ou --pack")?;
+            let txd = flag("--txd").or(found.txd).ok_or("falta --txd ou --pack")?;
+            let secs = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs());
+            let key = inj
+                .inject_weapon(&InjectWeapon {
+                    short,
+                    dff: &dff,
+                    txd: &txd,
+                    reference,
+                    created: &meta::rfc3339(secs),
+                })
+                .map_err(|e| e.to_string())?;
+            println!("injetada: {}", key.display());
+            if !weapons::has_icon(&txd, short) {
+                println!("aviso: o .txd não tem a textura '{short}icon' (ícone do HUD); renomeie a textura do ícone no Magic TXD");
             }
         }
         "enable" | "disable" => {

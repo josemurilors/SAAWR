@@ -23,5 +23,6 @@ mod testutil;
 pub mod text;
 pub mod tuning;
 pub mod validators;
+pub mod weapons;
 
 pub use error::{AwrError, Result};

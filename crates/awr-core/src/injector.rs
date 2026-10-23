@@ -11,18 +11,20 @@ use crate::meta::{self, Files, Meta, ModKind, Part};
 use crate::paths::InstallInfo;
 use crate::readme::FoundHandling;
 use crate::references::VehicleRef;
+use crate::weapons::WeaponRef;
 use crate::{audio, cargrp, fsutil, handling, ide, ids, tuning, validators};
 use std::{collections::BTreeSet, fs, io, path::Path, path::PathBuf};
 
 /// `. ` prefix: ModLoader ignores it, so a half-built mod is never loaded by accident.
-const STAGING: &str = ". awr-staging";
+pub(crate) const STAGING: &str = ". awr-staging";
 /// Holds the one `cargrp.dat` ModLoader merges over the game's (spec §4.3).
 pub const TRAFFIC_DIR: &str = "awr-transito";
-const AUDIO_CFG: &str = "gtasa_vehicleAudioSettings.cfg";
+pub(crate) const AUDIO_CFG: &str = "gtasa_vehicleAudioSettings.cfg";
 
 pub struct Injector<'a> {
     pub info: &'a InstallInfo,
     pub refs: &'a [VehicleRef],
+    pub weapons: &'a [WeaponRef],
     pub id_floor: u32,
 }
 
@@ -88,7 +90,7 @@ fn files_with(dir: &Path, ext: &str) -> Result<Vec<(String, PathBuf)>> {
     Ok(out)
 }
 
-fn io_at<T>(path: &Path, r: io::Result<T>) -> Result<T> {
+pub(crate) fn io_at<T>(path: &Path, r: io::Result<T>) -> Result<T> {
     r.map_err(|e| AwrError::io(path, e))
 }
 
@@ -228,7 +230,7 @@ impl Injector<'_> {
         }
         let _ = fs::remove_dir(&staging);
         for m in inventory::scan(&ml) {
-            if let Some(meta) = m.meta.filter(|m| m.kind == ModKind::Vehicle) {
+            if let Some(meta) = m.meta {
                 self.globals(&meta, m.enabled)?;
             }
         }
@@ -248,6 +250,11 @@ impl Injector<'_> {
             .iter()
             .flat_map(|v| [v.model.to_lowercase(), v.handling_id.to_lowercase()])
             .chain(
+                self.weapons
+                    .iter()
+                    .flat_map(|w| [w.model.to_lowercase(), w.name.to_lowercase()]),
+            )
+            .chain(
                 installed
                     .into_iter()
                     .filter_map(|m| m.meta.map(|m| m.short)),
@@ -255,14 +262,14 @@ impl Injector<'_> {
             .collect()
     }
 
-    fn not_running(&self) -> Result<()> {
+    pub(crate) fn not_running(&self) -> Result<()> {
         if checker::game_running(&self.info.root) {
             return Err(AwrError::LockedByGame);
         }
         Ok(())
     }
 
-    fn modloader(&self) -> Result<PathBuf> {
+    pub(crate) fn modloader(&self) -> Result<PathBuf> {
         self.info
             .modloader
             .clone()
@@ -357,6 +364,9 @@ impl Injector<'_> {
 
     /// Adds (or removes) the mod's lines in the audio cfg and the traffic cargrp.
     fn globals(&self, m: &Meta, add: bool) -> Result<()> {
+        if m.kind == ModKind::Weapon {
+            return self.weapon_globals(m, add);
+        }
         let audio_cfg = self
             .info
             .fla_data()
@@ -415,7 +425,7 @@ impl Injector<'_> {
     }
 
     /// Raises the managed FLA limits to what the enabled AWR vehicles need.
-    fn sync_fla(&self) -> Result<()> {
+    pub(crate) fn sync_fla(&self) -> Result<()> {
         let ini = self
             .info
             .fla_ini()
@@ -423,11 +433,14 @@ impl Injector<'_> {
         let ml = self.modloader()?;
         let mut needs = Needs::default();
         for m in inventory::scan(&ml).into_iter().filter(|m| m.enabled) {
-            let Some(m) = m.meta.filter(|m| m.kind == ModKind::Vehicle) else {
-                continue;
-            };
+            let Some(m) = m.meta else { continue };
             let top = m.parts.iter().map(|p| p.id).fold(m.id, u32::max);
             needs.max_model_id = needs.max_model_id.max(Some(top));
+            if m.kind == ModKind::Weapon {
+                needs.weapons += 1;
+                needs.max_weapon_type = needs.max_weapon_type.max(m.weapon_type_id);
+                continue;
+            }
             match m.vehicle_type.as_deref() {
                 Some("bike" | "bmx") => needs.bikes += 1,
                 Some("boat") => needs.boats += 1,
@@ -455,7 +468,7 @@ fn ide_txd(line: &[u8]) -> String {
 }
 
 /// Game-owned global file: `.bak` of the pre-AWR original, atomic write, only if it changed.
-fn edit_global(path: &Path, f: impl FnOnce(&[u8]) -> Vec<u8>) -> Result<()> {
+pub(crate) fn edit_global(path: &Path, f: impl FnOnce(&[u8]) -> Vec<u8>) -> Result<()> {
     let old = fsutil::read(path)?;
     let new = f(&old);
     if new != old {
@@ -480,7 +493,15 @@ mod tests {
             fs::create_dir_all(to.parent().unwrap()).unwrap();
             fs::copy(Path::new(FIX).join(from), to).unwrap();
         };
-        for f in ["handling.cfg", "vehicles.ide", "carcols.dat", "cargrp.dat"] {
+        for f in [
+            "handling.cfg",
+            "vehicles.ide",
+            "carcols.dat",
+            "cargrp.dat",
+            "default.ide",
+            "weapon.dat",
+            "object.dat",
+        ] {
             put(r.join("data").join(f), f);
         }
         let fla = r.join("modloader/$fastman92 limit adjuster");
@@ -491,6 +512,10 @@ mod tests {
         fs::write(r.join("modloader/OLA/III.VC.SA.LimitAdjuster.asi"), b"").unwrap();
         put(fla.join(crate::paths::FLA_INI), "fla_original.ini");
         put(fla.join("data").join(AUDIO_CFG), AUDIO_CFG);
+        put(
+            fla.join("data").join(crate::weapons::CONFIG),
+            crate::weapons::CONFIG,
+        );
         let info = detect_install(r).unwrap();
         let refs = load_vehicles(&info.data(), info.fla_data().as_deref()).unwrap();
         (d, info, refs)
@@ -526,6 +551,7 @@ mod tests {
         let inj = Injector {
             info: &info,
             refs: &refs,
+            weapons: &[],
             id_floor: 12500,
         };
         let ml = info.modloader.clone().unwrap();
@@ -583,6 +609,7 @@ mod tests {
         let inj = Injector {
             info: &info,
             refs: &refs,
+            weapons: &[],
             id_floor: 12500,
         };
         let f = d.path().join("gta_sa.exe");
@@ -642,6 +669,7 @@ num_colors 1
         let inj = Injector {
             info: &info,
             refs: &refs,
+            weapons: &[],
             id_floor: 12500,
         };
         let f = r.join("gta_sa.exe");
@@ -701,6 +729,7 @@ num_colors 1
         let inj = Injector {
             info: &info,
             refs: &refs,
+            weapons: &[],
             id_floor: 12500,
         };
         let f = d.path().join("gta_sa.exe");
@@ -740,6 +769,7 @@ num_colors 1
         let inj = Injector {
             info: &info,
             refs: &refs,
+            weapons: &[],
             id_floor: 12500,
         };
         let f = d.path().join("gta_sa.exe");
@@ -760,6 +790,76 @@ num_colors 1
     }
 
     #[test]
+    fn weapon_round_trip_leaves_the_global_config_untouched() {
+        if !have_game_fixtures() {
+            return;
+        }
+        let (d, info, refs) = install();
+        let fla_data = info.fla_data().unwrap();
+        let weapons = crate::weapons::load_weapons(&info.data(), &fla_data).unwrap();
+        assert!(weapons.len() >= 30, "{}", weapons.len());
+        let inj = Injector {
+            info: &info,
+            refs: &refs,
+            weapons: &weapons,
+            id_floor: 12500,
+        };
+        let cfg = fla_data.join(crate::weapons::CONFIG);
+        let cfg0 = read(&cfg);
+        let f = d.path().join("gta_sa.exe");
+        let req = crate::weapons::InjectWeapon {
+            short: "revolver",
+            dff: &f,
+            txd: &f,
+            reference: "DESERT_EAGLE",
+            created: "2026-10-23T00:00:00Z",
+        };
+        let key = inj.inject_weapon(&req).unwrap();
+        assert!(key.ends_with("12400-revolver"));
+        for n in [
+            "revolver.dff",
+            "revolver.txd",
+            "revolver.ide",
+            "Loader.txt",
+            "meta.json",
+        ] {
+            assert!(key.join(n).is_file(), "{n}");
+        }
+        let loader = String::from_utf8_lossy(&read(&key.join("Loader.txt"))).into_owned();
+        assert!(
+            loader.contains("$ REVOLVER") && loader.contains("12400"),
+            "{loader}"
+        );
+        let cfg1 = read(&cfg);
+        let added = String::from_utf8_lossy(&cfg1[cfg0.len()..]).into_owned();
+        assert!(added.trim_start().starts_with("70    REVOLVER"), "{added}");
+        assert!(added.contains("DESERT_EAGLE"));
+        let meta = meta::read(&key).unwrap();
+        assert_eq!(
+            (meta.kind, meta.weapon_type_id),
+            (ModKind::Weapon, Some(70))
+        );
+
+        // a second weapon takes the next model and type IDs
+        let again = inj
+            .inject_weapon(&crate::weapons::InjectWeapon {
+                short: "revolv2",
+                ..req
+            })
+            .unwrap();
+        assert!(again.to_string_lossy().contains("12401-revolv2"));
+
+        let off = inj.set_enabled(&key, false).unwrap();
+        assert!(read(&cfg).len() < cfg1.len());
+        assert!(!String::from_utf8_lossy(&read(&cfg)).contains("REVOLVER "));
+        let on = inj.set_enabled(&off, true).unwrap();
+        assert!(String::from_utf8_lossy(&read(&cfg)).contains("70    REVOLVER"));
+        inj.remove(&on).unwrap();
+        inj.remove(&again).unwrap();
+        assert_eq!(read(&cfg), cfg0, "config back to the original bytes");
+    }
+
+    #[test]
     fn rejects_taken_shorts_and_unknown_references() {
         if !have_game_fixtures() {
             return;
@@ -768,6 +868,7 @@ num_colors 1
         let inj = Injector {
             info: &info,
             refs: &refs,
+            weapons: &[],
             id_floor: 12500,
         };
         let f = d.path().join("gta_sa.exe");
@@ -795,6 +896,7 @@ num_colors 1
         let inj = Injector {
             info: &info,
             refs: &refs,
+            weapons: &[],
             id_floor: 12500,
         };
         let ml = info.modloader.clone().unwrap();
@@ -823,6 +925,7 @@ num_colors 1
         let inj = Injector {
             info: &info,
             refs: &refs,
+            weapons: &[],
             id_floor: 12500,
         };
         let foreign = info.modloader.clone().unwrap().join("awr-cars/12500-x");

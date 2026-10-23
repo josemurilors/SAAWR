@@ -25,6 +25,11 @@ pub fn collect_used_ids(
     used
 }
 
+/// Weapon type IDs start at 70 (MixMods tutorial); 0-69 belong to the game and the FLA.
+pub fn allocate_weapon_type(used: &BTreeSet<u32>) -> Result<u32> {
+    allocate(used, 70..=255, None)
+}
+
 pub fn allocate_vehicle(used: &BTreeSet<u32>, floor: u32) -> Result<u32> {
     allocate(used, floor..=CEILING, Some(&WEAPON_RANGE))
 }
