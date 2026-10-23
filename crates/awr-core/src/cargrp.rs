@@ -39,17 +39,62 @@ fn map_groups(file: &[u8], f: impl Fn(&[u8], &[u8]) -> Option<Vec<u8>>) -> Vec<u
     out
 }
 
+/// `short` appended to the group's names, before the trailing whitespace.
+fn append(names: &[u8], rest: &[u8], short: &str) -> Option<Vec<u8>> {
+    if has(names, short) {
+        return None;
+    }
+    let end = names
+        .iter()
+        .rposition(|b| !b.is_ascii_whitespace() && *b != b',')?
+        + 1;
+    Some([&names[..end], b", ", short.as_bytes(), &names[end..], rest].concat())
+}
+
 /// Adds `short` to every group the reference is in, so the clone drives where it does.
 pub fn add_like(file: &[u8], reference: &str, short: &str) -> Vec<u8> {
     map_groups(file, |names, rest| {
-        if !has(names, reference) || has(names, short) {
+        if !has(names, reference) {
             return None;
         }
-        let end = names
-            .iter()
-            .rposition(|b| !b.is_ascii_whitespace() && *b != b',')?
-            + 1;
-        Some([&names[..end], b", ", short.as_bytes(), &names[end..], rest].concat())
+        append(names, rest, short)
+    })
+}
+
+/// One traffic group, in file order (the order is what the game indexes by).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Group {
+    pub index: usize,
+    /// The `# LABEL` comment, e.g. `POPCYCLE_GROUP_WORKERS` or `Boats`.
+    pub label: String,
+    pub len: usize,
+}
+
+pub fn groups(file: &[u8]) -> Vec<Group> {
+    crate::text::lines(file)
+        .filter_map(split_group)
+        .enumerate()
+        .map(|(index, (names, rest))| Group {
+            index,
+            label: String::from_utf8_lossy(rest.strip_prefix(b"#").unwrap_or(rest))
+                .trim()
+                .to_string(),
+            len: tokens(names).len(),
+        })
+        .collect()
+}
+
+/// Adds `short` to the group at `index` only (the player picked where it drives).
+pub fn add_to(file: &[u8], index: usize, short: &str) -> Vec<u8> {
+    let seen = std::cell::Cell::new(0);
+    map_groups(file, |names, rest| {
+        let this = seen.get();
+        seen.set(this + 1);
+        if this == index {
+            append(names, rest, short)
+        } else {
+            None
+        }
     })
 }
 
@@ -93,6 +138,30 @@ mod tests {
             b"# head\r\nbuffalo, stretch, club, gtr34 \t# POPCYCLE_GROUP_CLUBBERS\r\npeds, bus\t# W\r\ncaddy\t# GOLFERS\r\n"
         );
         assert_eq!(add_like(&out, "stretch", "gtr34"), out);
+    }
+
+    #[test]
+    fn lists_groups_in_order_and_adds_to_one() {
+        let g = groups(F);
+        let view: Vec<_> = g
+            .iter()
+            .map(|g| (g.index, g.label.as_str(), g.len))
+            .collect();
+        assert_eq!(
+            view,
+            [
+                (0, "POPCYCLE_GROUP_CLUBBERS", 3),
+                (1, "W", 2),
+                (2, "GOLFERS", 1)
+            ]
+        );
+        let out = add_to(F, 1, "gtr34");
+        assert_eq!(
+            out,
+            b"# head\r\nbuffalo, stretch, club \t# POPCYCLE_GROUP_CLUBBERS\r\npeds, bus, gtr34\t# W\r\ncaddy\t# GOLFERS\r\n"
+        );
+        assert_eq!(remove(&out, "gtr34"), F);
+        assert_eq!(add_to(F, 9, "gtr34"), F);
     }
 
     #[test]

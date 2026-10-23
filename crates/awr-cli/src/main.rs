@@ -1,7 +1,8 @@
 use awr_core::{
+    batch,
     checker::{self, Severity},
     config::AppSettings,
-    injector::{InjectVehicle, Injector},
+    injector::{InjectVehicle, Injector, Traffic},
     inventory, meta, pack,
     paths::{self, InstallInfo},
     references, validators,
@@ -12,7 +13,9 @@ const USAGE: &str = "uso: awr-cli <comando> [--gta <pasta do GTA SA>]
   status
   doctor
   inject --name <nome> --ref <modelo, ex. uranus> (--pack <pasta do mod> | --dff <arq> --txd <arq>)
-         [--paintjobs <pasta>] [--parts <pasta>] [--ivfc <arq>] [--short <nome curto>] [--no-traffic] [--no-audio]
+         [--paintjobs <pasta>] [--parts <pasta>] [--ivfc <arq>] [--short <nome curto>] [--traffic auto|none|<n° do grupo>] [--no-audio]
+  groups
+  batch <pasta com subpastas> [--ref <modelo padrão>] [--yes]
   enable <pasta do mod>
   disable <pasta do mod>
   remove <pasta do mod>
@@ -52,6 +55,14 @@ fn run(args: &[String]) -> Result<(), String> {
     }
     if cmd == "doctor" {
         return doctor(&info);
+    }
+    if cmd == "groups" {
+        let file =
+            awr_core::fsutil::read(&info.data().join("cargrp.dat")).map_err(|e| e.to_string())?;
+        for g in awr_core::cargrp::groups(&file) {
+            println!("{:>3}  {}  ({} carros)", g.index, g.label, g.len);
+        }
+        return Ok(());
     }
     let refs = references::load_vehicles(&info.data(), info.fla_data().as_deref())
         .map_err(|e| e.to_string())?;
@@ -93,7 +104,7 @@ fn run(args: &[String]) -> Result<(), String> {
                     dff: &dff,
                     txd: &txd,
                     reference,
-                    traffic: !args.iter().any(|a| a == "--no-traffic"),
+                    traffic: traffic(opt(args, "--traffic"))?,
                     audio: !args.iter().any(|a| a == "--no-audio"),
                     created: &meta::rfc3339(secs),
                     paintjobs: paintjobs.as_deref(),
@@ -102,6 +113,48 @@ fn run(args: &[String]) -> Result<(), String> {
                 })
                 .map_err(|e| e.to_string())?;
             println!("injetado: {}", key.display());
+        }
+        "batch" => {
+            let dir = folder()?;
+            let fallback = opt(args, "--ref");
+            let found = batch::scan(&dir, &refs, &inj.taken_shorts());
+            let yes = args.iter().any(|a| a == "--yes");
+            let secs = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs());
+            for c in &found {
+                let Some(reference) = c.reference.as_deref().or(fallback) else {
+                    println!("pulado (sem referência, use --ref): {}", c.name);
+                    continue;
+                };
+                println!("{} -> {} (ref {reference})", c.name, c.short);
+                if !yes {
+                    continue;
+                }
+                let (Some(dff), Some(txd)) = (&c.files.dff, &c.files.txd) else {
+                    continue;
+                };
+                let r = inj.inject_vehicle(&InjectVehicle {
+                    name: &c.name,
+                    short: &c.short,
+                    dff,
+                    txd,
+                    reference,
+                    traffic: Traffic::Auto,
+                    audio: true,
+                    created: &meta::rfc3339(secs),
+                    paintjobs: c.files.paintjobs.as_deref(),
+                    parts: c.files.parts.as_deref(),
+                    ivfc: c.files.ivfc.as_deref(),
+                });
+                match r {
+                    Ok(k) => println!("  injetado: {}", k.display()),
+                    Err(e) => println!("  erro: {e}"),
+                }
+            }
+            if !yes {
+                println!("(simulação; use --yes para injetar)");
+            }
         }
         "enable" | "disable" => {
             let key = inj
@@ -120,6 +173,18 @@ fn run(args: &[String]) -> Result<(), String> {
         _ => return Err(USAGE.to_string()),
     }
     Ok(())
+}
+
+/// `auto` (default), `none`, or the group number from `awr-cli groups`.
+fn traffic(v: Option<&str>) -> Result<Traffic, String> {
+    match v {
+        None | Some("auto") => Ok(Traffic::Auto),
+        Some("none") => Ok(Traffic::None),
+        Some(n) => n
+            .parse()
+            .map(Traffic::Group)
+            .map_err(|_| format!("--traffic inválido: {n}")),
+    }
 }
 
 fn doctor(info: &InstallInfo) -> Result<(), String> {

@@ -1,18 +1,22 @@
 //! SA-AWR: single-screen app over `awr-core` (spec §6). No business logic lives here.
 
 use awr_core::{
+    batch::{self, Candidate},
+    cargrp::{self, Group},
     checker::{self, Finding, Severity},
     config::AppSettings,
-    injector::{InjectVehicle, Injector},
+    fsutil,
+    injector::{InjectVehicle, Injector, Traffic},
     inventory::{self, InstalledMod},
     meta::{self, ModKind},
-    pack,
+    pack::PackFiles,
     paths::{self, InstallInfo},
     references::{self, VehicleRef},
     validators,
 };
 use eframe::egui::{self, Color32, RichText};
 use std::{
+    collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
     time::SystemTime,
 };
@@ -26,7 +30,8 @@ fn main() -> eframe::Result {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1100.0, 720.0])
             .with_min_inner_size([880.0, 560.0])
-            .with_title("SA-AWR"),
+            .with_title("SA-AWR")
+            .with_drag_and_drop(true),
         ..Default::default()
     };
     eframe::run_native(
@@ -67,22 +72,45 @@ fn theme(ctx: &egui::Context) {
 struct Game {
     info: InstallInfo,
     refs: Vec<VehicleRef>,
+    groups: Vec<Group>,
 }
 
-#[derive(Default)]
-struct Form {
-    dff: Option<PathBuf>,
-    txd: Option<PathBuf>,
-    paintjobs: Option<PathBuf>,
-    parts: Option<PathBuf>,
-    ivfc: Option<PathBuf>,
-    reference: String,
-    ref_filter: String,
+/// One vehicle waiting to be injected (a dropped pack, or a sub-folder of a batch).
+struct Item {
     name: String,
     short: String,
-    short_edited: bool,
-    no_traffic: bool,
-    no_audio: bool,
+    reference: String,
+    files: PackFiles,
+    traffic: Traffic,
+    audio: bool,
+    include: bool,
+}
+
+impl Item {
+    fn from(c: Candidate) -> Self {
+        Item {
+            name: c.name,
+            short: c.short,
+            reference: c.reference.unwrap_or_default(),
+            files: c.files,
+            traffic: Traffic::Auto,
+            audio: true,
+            include: true,
+        }
+    }
+
+    /// What blocks this item from being injected, if anything.
+    fn problem(&self, taken: &BTreeSet<String>, dup: bool) -> Option<String> {
+        if self.reference.is_empty() {
+            return Some("escolha a referência".into());
+        }
+        if dup {
+            return Some("nome curto repetido na fila".into());
+        }
+        validators::check_short(&self.short, |s| taken.contains(s))
+            .err()
+            .map(|e| e.to_string())
+    }
 }
 
 struct App {
@@ -91,7 +119,8 @@ struct App {
     game: Option<Game>,
     mods: Vec<InstalledMod>,
     findings: Vec<Finding>,
-    form: Form,
+    queue: Vec<Item>,
+    ref_filter: String,
     confirm_delete: Option<PathBuf>,
     log: Vec<String>,
 }
@@ -109,7 +138,8 @@ impl App {
             game: None,
             mods: vec![],
             findings: vec![],
-            form: Form::default(),
+            queue: vec![],
+            ref_filter: String::new(),
             confirm_delete: None,
             log: vec![],
         };
@@ -130,7 +160,10 @@ impl App {
         let root = PathBuf::from(self.gta_text.trim());
         let loaded = paths::detect_install(&root).and_then(|info| {
             let refs = references::load_vehicles(&info.data(), info.fla_data().as_deref())?;
-            Ok(Game { info, refs })
+            let groups = fsutil::read(&info.data().join("cargrp.dat"))
+                .map(|f| cargrp::groups(&f))
+                .unwrap_or_default();
+            Ok(Game { info, refs, groups })
         });
         match loaded {
             Ok(g) => {
@@ -171,64 +204,93 @@ impl App {
         })
     }
 
-    /// Dropped folder = a pack; dropped files = the `.dff` / `.txd` themselves.
-    fn accept_drop(&mut self, path: PathBuf) {
-        let f = &mut self.form;
-        if path.is_dir() {
-            let found = pack::discover(&path, &f.reference);
-            f.dff = found.dff;
-            f.txd = found.txd;
-            f.paintjobs = found.paintjobs;
-            f.parts = found.parts;
-            f.ivfc = found.ivfc;
-            if f.name.is_empty() {
-                f.name = path
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_default();
-            }
-        } else {
-            match path.extension().and_then(|e| e.to_str()) {
-                Some(e) if e.eq_ignore_ascii_case("dff") => f.dff = Some(path),
-                Some(e) if e.eq_ignore_ascii_case("txd") => f.txd = Some(path),
-                _ => {}
-            }
+    /// Anything dropped or picked: a pack folder, a folder of packs, or loose `.dff`/`.txd`.
+    /// Names come from the folder (or file) name and the reference from the `.dff` name.
+    fn add_paths(&mut self, paths: Vec<PathBuf>) {
+        let Some(inj) = self.injector() else {
+            return self.say("erro: abra a pasta do GTA SA antes de adicionar veículos");
+        };
+        let refs = inj.refs;
+        let mut taken = inj.taken_shorts();
+        taken.extend(self.queue.iter().map(|i| i.short.clone()));
+        let mut found: Vec<Candidate> = vec![];
+        for p in paths.iter().filter(|p| p.is_dir()) {
+            let c = batch::scan(p, refs, &taken);
+            taken.extend(c.iter().map(|c| c.short.clone()));
+            found.extend(c);
         }
-        if !f.short_edited {
-            f.short = validators::short_from(&f.name);
+        for dff in paths.iter().filter(|p| ext_is(p, "dff")) {
+            let txd = paths
+                .iter()
+                .find(|p| ext_is(p, "txd") && p.file_stem() == dff.file_stem());
+            let Some(txd) = txd else { continue };
+            let name = dff
+                .file_stem()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let files = PackFiles {
+                dff: Some(dff.clone()),
+                txd: Some(txd.clone()),
+                ..Default::default()
+            };
+            let short = batch::suggest_short(&name, &taken);
+            taken.insert(short.clone());
+            found.push(Candidate {
+                folder: dff.parent().map(Path::to_path_buf).unwrap_or_default(),
+                reference: batch::guess_reference(&files, refs),
+                name,
+                short,
+                files,
+            });
+        }
+        if found.is_empty() {
+            self.say("nada reconhecido: precisa de uma pasta com .dff + .txd");
+        } else {
+            self.say(format!("{} veículo(s) na fila", found.len()));
+            self.queue.extend(found.into_iter().map(Item::from));
         }
     }
 
-    fn inject(&mut self) {
-        let f = &self.form;
-        let (Some(dff), Some(txd)) = (f.dff.clone(), f.txd.clone()) else {
-            return self.say("erro: falta o .dff ou o .txd");
-        };
+    fn inject_all(&mut self) {
         let secs = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .map_or(0, |d| d.as_secs());
-        let result = self.injector().map(|inj| {
-            inj.inject_vehicle(&InjectVehicle {
-                name: &f.name,
-                short: &f.short,
-                dff: &dff,
-                txd: &txd,
-                reference: &f.reference,
-                traffic: !f.no_traffic,
-                audio: !f.no_audio,
-                created: &meta::rfc3339(secs),
-                paintjobs: f.paintjobs.as_deref(),
-                parts: f.parts.as_deref(),
-                ivfc: f.ivfc.as_deref(),
-            })
-        });
-        match result {
-            Some(Ok(key)) => {
-                self.say(format!("injetado: {}", key.display()));
-                self.form = Form::default();
+        let mut logs = vec![];
+        let mut left = vec![];
+        for item in std::mem::take(&mut self.queue) {
+            let done = item.include && {
+                let r = item.files.dff.as_deref().zip(item.files.txd.as_deref());
+                match (r, self.injector()) {
+                    (Some((dff, txd)), Some(inj)) => {
+                        let res = inj.inject_vehicle(&InjectVehicle {
+                            name: &item.name,
+                            short: &item.short,
+                            dff,
+                            txd,
+                            reference: &item.reference,
+                            traffic: item.traffic,
+                            audio: item.audio,
+                            created: &meta::rfc3339(secs),
+                            paintjobs: item.files.paintjobs.as_deref(),
+                            parts: item.files.parts.as_deref(),
+                            ivfc: item.files.ivfc.as_deref(),
+                        });
+                        match &res {
+                            Ok(k) => logs.push(format!("injetado: {}", k.display())),
+                            Err(e) => logs.push(format!("erro em {}: {e}", item.name)),
+                        }
+                        res.is_ok()
+                    }
+                    _ => false,
+                }
+            };
+            if !done {
+                left.push(item);
             }
-            Some(Err(e)) => self.say(format!("erro: {e}")),
-            None => self.say("erro: abra a pasta do GTA SA primeiro"),
+        }
+        self.queue = left;
+        for l in logs {
+            self.say(l);
         }
         self.refresh();
     }
@@ -244,88 +306,110 @@ impl App {
     }
 
     fn left(&mut self, ui: &mut egui::Ui) {
-        ui.heading(RichText::new("Novo veículo").color(GOLD));
-        let drop_text = match (&self.form.dff, &self.form.txd) {
-            (Some(d), Some(t)) => format!("{}\n{}", file_name(d), file_name(t)),
-            _ => "Arraste a pasta do mod (ou .dff + .txd) aqui".into(),
-        };
-        ui.group(|ui| {
-            ui.set_min_height(64.0);
-            ui.set_width(ui.available_width());
-            ui.label(RichText::new(drop_text).color(MUTED));
+        ui.heading(RichText::new("Importar veículos").color(GOLD));
+        ui.label(
+            RichText::new("Arraste aqui uma pasta de mod, uma pasta com várias, ou .dff + .txd")
+                .color(MUTED),
+        );
+        ui.horizontal(|ui| {
             if ui.button("Procurar pasta...").clicked() {
                 if let Some(p) = rfd::FileDialog::new().pick_folder() {
-                    self.accept_drop(p);
+                    self.add_paths(vec![p]);
                 }
             }
+            if ui.button("Procurar arquivos...").clicked() {
+                if let Some(p) = rfd::FileDialog::new()
+                    .add_filter("modelo/textura", &["dff", "txd"])
+                    .pick_files()
+                {
+                    self.add_paths(p);
+                }
+            }
+            if !self.queue.is_empty() && ui.button("Limpar fila").clicked() {
+                self.queue.clear();
+            }
         });
-        let f = &self.form;
-        let extras = [
-            (f.parts.is_some(), "tuning"),
-            (f.paintjobs.is_some(), "paintjobs"),
-            (f.ivfc.is_some(), "cores IVF"),
-        ]
-        .iter()
-        .filter(|(on, _)| *on)
-        .map(|(_, n)| *n)
-        .collect::<Vec<_>>();
-        if !extras.is_empty() {
-            ui.label(RichText::new(format!("Inclui: {}", extras.join(", "))).color(MUTED));
-        }
-        ui.add_space(8.0);
+        ui.separator();
 
-        if let Some(g) = &self.game {
-            ui.label("Referência");
-            ui.add(
-                egui::TextEdit::singleline(&mut self.form.ref_filter)
-                    .hint_text("filtrar (ex.: uranus)"),
-            );
-            let filter = self.form.ref_filter.to_ascii_lowercase();
-            egui::ComboBox::from_id_salt("ref")
-                .width(ui.available_width())
-                .selected_text(if self.form.reference.is_empty() {
-                    "escolha..."
-                } else {
-                    &self.form.reference
-                })
-                .show_ui(ui, |ui| {
-                    for r in g.refs.iter().filter(|r| r.model.contains(&filter)) {
-                        ui.selectable_value(
-                            &mut self.form.reference,
-                            r.model.clone(),
-                            format!("{} ({})", r.model, r.kind),
-                        );
+        let taken = self
+            .injector()
+            .map(|i| i.taken_shorts())
+            .unwrap_or_default();
+        let mut shorts: BTreeMap<String, usize> = BTreeMap::new();
+        for i in self.queue.iter().filter(|i| i.include) {
+            *shorts.entry(i.short.clone()).or_default() += 1;
+        }
+        let App {
+            queue,
+            game,
+            ref_filter,
+            ..
+        } = self;
+        let mut ready = 0;
+        let mut remove = None;
+        egui::ScrollArea::vertical()
+            .max_height(ui.available_height() - 52.0)
+            .show(ui, |ui| {
+                for (n, item) in queue.iter_mut().enumerate() {
+                    let dup = shorts.get(&item.short).is_some_and(|c| *c > 1);
+                    let problem = item.problem(&taken, dup);
+                    if item.include && problem.is_none() {
+                        ready += 1;
                     }
-                });
+                    ui.group(|ui| {
+                        ui.set_width(ui.available_width());
+                        ui.horizontal(|ui| {
+                            ui.checkbox(&mut item.include, "");
+                            ui.add(egui::TextEdit::singleline(&mut item.name).desired_width(200.0));
+                            ui.add(
+                                egui::TextEdit::singleline(&mut item.short)
+                                    .desired_width(70.0)
+                                    .hint_text("curto"),
+                            );
+                            if ui.small_button("x").clicked() {
+                                remove = Some(n);
+                            }
+                        });
+                        if let Some(g) = game.as_ref() {
+                            ui.horizontal(|ui| {
+                                ui.label("Ref:");
+                                ref_combo(ui, n, &g.refs, &mut item.reference, ref_filter);
+                                ui.label("Tráfego:");
+                                traffic_combo(ui, n, &g.groups, &mut item.traffic);
+                            });
+                        }
+                        let extras: Vec<&str> = [
+                            (item.files.parts.is_some(), "tuning"),
+                            (item.files.paintjobs.is_some(), "paintjobs"),
+                            (item.files.ivfc.is_some(), "cores IVF"),
+                        ]
+                        .iter()
+                        .filter(|(on, _)| *on)
+                        .map(|(_, n)| *n)
+                        .collect();
+                        let info = if extras.is_empty() {
+                            "só modelo e textura".to_string()
+                        } else {
+                            format!("inclui {}", extras.join(", "))
+                        };
+                        match (item.include, &problem) {
+                            (true, Some(p)) => ui.label(RichText::new(p).color(BAD)),
+                            _ => ui.label(RichText::new(info).small().color(MUTED)),
+                        };
+                    });
+                }
+            });
+        if let Some(n) = remove {
+            self.queue.remove(n);
         }
-        ui.add_space(8.0);
-        ui.label("Nome");
-        if ui.text_edit_singleline(&mut self.form.name).changed() && !self.form.short_edited {
-            self.form.short = validators::short_from(&self.form.name);
-        }
-        ui.label("Nome curto (até 7)");
-        if ui.text_edit_singleline(&mut self.form.short).changed() {
-            self.form.short_edited = true;
-        }
-        ui.checkbox(&mut self.form.no_traffic, "Sem tráfego");
-        ui.checkbox(&mut self.form.no_audio, "Sem áudio clonado");
-        ui.add_space(12.0);
-        let f = &self.form;
-        let ready = self.game.is_some()
-            && f.dff.is_some()
-            && f.txd.is_some()
-            && !f.reference.is_empty()
-            && !f.short.is_empty()
-            && !checker::has_errors(&self.findings);
-        let btn = egui::Button::new(
-            RichText::new("INJETAR NO JOGO")
-                .strong()
-                .color(Color32::BLACK),
-        )
-        .fill(if ready { GOLD } else { MUTED })
-        .min_size(egui::vec2(ui.available_width(), 36.0));
-        if ui.add_enabled(ready, btn).clicked() {
-            self.inject();
+        let blocked = checker::has_errors(&self.findings) || self.game.is_none();
+        let label = format!("INJETAR NO JOGO ({ready})");
+        let on = ready > 0 && !blocked;
+        let btn = egui::Button::new(RichText::new(label).strong().color(Color32::BLACK))
+            .fill(if on { GOLD } else { MUTED })
+            .min_size(egui::vec2(ui.available_width(), 36.0));
+        if ui.add_enabled(on, btn).clicked() {
+            self.inject_all();
         }
     }
 
@@ -423,6 +507,62 @@ impl App {
     }
 }
 
+/// Reference picker with a filter box at the top of the list.
+fn ref_combo(
+    ui: &mut egui::Ui,
+    n: usize,
+    refs: &[VehicleRef],
+    selected: &mut String,
+    filter: &mut String,
+) {
+    egui::ComboBox::from_id_salt(("ref", n))
+        .width(120.0)
+        .selected_text(if selected.is_empty() {
+            "escolha..."
+        } else {
+            selected.as_str()
+        })
+        .show_ui(ui, |ui| {
+            ui.add(egui::TextEdit::singleline(filter).hint_text("filtrar"));
+            let f = filter.to_ascii_lowercase();
+            for r in refs.iter().filter(|r| r.model.contains(&f)) {
+                ui.selectable_value(
+                    selected,
+                    r.model.clone(),
+                    format!("{} ({})", r.model, r.kind),
+                );
+            }
+        });
+}
+
+fn traffic_combo(ui: &mut egui::Ui, n: usize, groups: &[Group], traffic: &mut Traffic) {
+    let text = match *traffic {
+        Traffic::Auto => "como a referência".to_string(),
+        Traffic::None => "nenhum".to_string(),
+        Traffic::Group(i) => groups.get(i).map_or(format!("grupo {i}"), group_label),
+    };
+    egui::ComboBox::from_id_salt(("traffic", n))
+        .width(190.0)
+        .selected_text(text)
+        .show_ui(ui, |ui| {
+            ui.selectable_value(traffic, Traffic::Auto, "como a referência");
+            ui.selectable_value(traffic, Traffic::None, "nenhum");
+            ui.separator();
+            for g in groups {
+                ui.selectable_value(traffic, Traffic::Group(g.index), group_label(g));
+            }
+        });
+}
+
+fn group_label(g: &Group) -> String {
+    let l = g.label.strip_prefix("POPCYCLE_GROUP_").unwrap_or(&g.label);
+    format!("{} - {}", g.index, l.replace('_', " ").to_lowercase())
+}
+
+fn ext_is(p: &Path, ext: &str) -> bool {
+    p.extension().is_some_and(|e| e.eq_ignore_ascii_case(ext))
+}
+
 fn file_name(p: &Path) -> String {
     p.file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -431,22 +571,46 @@ fn file_name(p: &Path) -> String {
 
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        let dropped: Vec<PathBuf> = ui.ctx().input(|i| {
-            i.raw
+        let (dropped, hovering) = ui.ctx().input(|i| {
+            let files = i
+                .raw
                 .dropped_files
                 .iter()
                 .map(|f| f.path().to_path_buf())
                 .filter(|p| !p.as_os_str().is_empty())
-                .collect()
+                .collect::<Vec<_>>();
+            (files, !i.raw.hovered_files.is_empty())
         });
-        for p in dropped {
-            self.accept_drop(p);
+        if !dropped.is_empty() {
+            self.add_paths(dropped);
         }
         egui::Panel::bottom("footer").show(ui, |ui| self.footer(ui));
         egui::Panel::left("form")
             .resizable(false)
-            .exact_size(340.0)
+            .exact_size(500.0)
             .show(ui, |ui| self.left(ui));
         egui::CentralPanel::default().show(ui, |ui| self.right(ui));
+        if hovering {
+            let rect = ui.max_rect();
+            let p = ui.painter();
+            p.rect_filled(
+                rect,
+                egui::CornerRadius::ZERO,
+                Color32::from_black_alpha(190),
+            );
+            p.rect_stroke(
+                rect.shrink(12.0),
+                egui::CornerRadius::ZERO,
+                egui::Stroke::new(2.0, GOLD),
+                egui::StrokeKind::Inside,
+            );
+            p.text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "Solte para adicionar à fila",
+                egui::FontId::proportional(26.0),
+                GOLD,
+            );
+        }
     }
 }

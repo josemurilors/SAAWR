@@ -25,6 +25,26 @@ pub struct Injector<'a> {
     pub id_floor: u32,
 }
 
+/// Where the new car shows up in traffic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Traffic {
+    /// The same groups as the reference car.
+    Auto,
+    /// One group, by its index in `cargrp.dat` (see `cargrp::groups`).
+    Group(usize),
+    None,
+}
+
+impl Traffic {
+    fn to_meta(self) -> Option<String> {
+        match self {
+            Traffic::Auto => Some("auto".into()),
+            Traffic::Group(i) => Some(format!("group:{i}")),
+            Traffic::None => None,
+        }
+    }
+}
+
 pub struct InjectVehicle<'a> {
     /// Friendly name shown in the HUD.
     pub name: &'a str,
@@ -33,8 +53,7 @@ pub struct InjectVehicle<'a> {
     pub txd: &'a Path,
     /// IDE model name of the original vehicle to clone, e.g. `landstal`.
     pub reference: &'a str,
-    /// Same traffic groups as the reference.
-    pub traffic: bool,
+    pub traffic: Traffic,
     /// Clone the reference's engine sound.
     pub audio: bool,
     pub created: &'a str,
@@ -86,12 +105,8 @@ impl Injector<'_> {
             .into_iter()
             .filter_map(|m| m.meta)
             .collect();
-        validators::check_short(req.short, |s| {
-            installed.iter().any(|i| i.short == s)
-                || self.refs.iter().any(|v| {
-                    v.model.eq_ignore_ascii_case(s) || v.handling_id.eq_ignore_ascii_case(s)
-                })
-        })?;
+        let taken = self.taken_shorts();
+        validators::check_short(req.short, |s| taken.contains(s))?;
         let mut used = ids::collect_used_ids(self.refs.iter().map(|v| v.id), &ml);
         used.extend(installed.iter().flat_map(|m| m.parts.iter().map(|p| p.id)));
         let id = ids::allocate_vehicle(&used, self.id_floor)?;
@@ -112,7 +127,7 @@ impl Injector<'_> {
             short: req.short.into(),
             vehicle_type: Some(r.kind.clone()),
             reference: r.model.clone(),
-            traffic_group: req.traffic.then(|| "auto".to_string()),
+            traffic_group: req.traffic.to_meta(),
             audio: (req.audio && r.audio_line.is_some()).then(|| format!("clone:{}", r.model)),
             created: req.created.into(),
             files: Files {
@@ -215,6 +230,25 @@ impl Injector<'_> {
         }
         self.sync_fla()?;
         Ok(dropped)
+    }
+
+    /// Shorts that cannot be reused: original models/handling names and installed mods.
+    pub fn taken_shorts(&self) -> BTreeSet<String> {
+        let installed = self
+            .info
+            .modloader
+            .as_deref()
+            .map(inventory::scan)
+            .unwrap_or_default();
+        self.refs
+            .iter()
+            .flat_map(|v| [v.model.to_lowercase(), v.handling_id.to_lowercase()])
+            .chain(
+                installed
+                    .into_iter()
+                    .filter_map(|m| m.meta.map(|m| m.short)),
+            )
+            .collect()
     }
 
     fn not_running(&self) -> Result<()> {
@@ -329,12 +363,15 @@ impl Injector<'_> {
         if add && m.traffic_group.is_none() {
             return Ok(());
         }
-        self.edit_traffic(add, |f| {
-            if add {
-                cargrp::add_like(f, &m.reference, &m.short)
-            } else {
-                cargrp::remove(f, &m.short)
-            }
+        let group = m
+            .traffic_group
+            .as_deref()
+            .and_then(|g| g.strip_prefix("group:"))
+            .and_then(|i| i.parse().ok());
+        self.edit_traffic(add, |f| match (add, group) {
+            (false, _) => cargrp::remove(f, &m.short),
+            (true, Some(i)) => cargrp::add_to(f, i, &m.short),
+            (true, None) => cargrp::add_like(f, &m.reference, &m.short),
         })
     }
 
@@ -452,7 +489,7 @@ mod tests {
             dff: files,
             txd: files,
             reference,
-            traffic: true,
+            traffic: Traffic::Auto,
             audio: true,
             created: "2026-10-23T00:00:00Z",
             paintjobs: None,
@@ -638,6 +675,45 @@ num_colors 1
         // the part IDs are taken: the next car skips them
         let next = inj.inject_vehicle(&req("other", "landstal", &f)).unwrap();
         assert!(next.ends_with("12503-other"));
+    }
+
+    #[test]
+    fn traffic_can_go_to_one_chosen_group_or_none() {
+        if !have_game_fixtures() {
+            return;
+        }
+        let (d, info, refs) = install();
+        let inj = Injector {
+            info: &info,
+            refs: &refs,
+            id_floor: 12500,
+        };
+        let f = d.path().join("gta_sa.exe");
+        let traffic = info
+            .modloader
+            .clone()
+            .unwrap()
+            .join(TRAFFIC_DIR)
+            .join("cargrp.dat");
+        let key = inj
+            .inject_vehicle(&InjectVehicle {
+                traffic: Traffic::Group(29),
+                ..req("gtr34", "landstal", &f)
+            })
+            .unwrap();
+        let groups = cargrp::groups(&read(&traffic));
+        assert_eq!(groups[29].label, "Boats");
+        let line = String::from_utf8_lossy(&read(&traffic)).into_owned();
+        assert_eq!(line.matches("gtr34").count(), 1, "only the chosen group");
+        inj.remove(&key).unwrap();
+        assert!(!traffic.exists());
+
+        inj.inject_vehicle(&InjectVehicle {
+            traffic: Traffic::None,
+            ..req("other", "landstal", &f)
+        })
+        .unwrap();
+        assert!(!traffic.exists());
     }
 
     #[test]
