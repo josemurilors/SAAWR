@@ -1,1 +1,5 @@
 /target
+/spike
+# game files (Rockstar / fastman92): local only, see scripts/fixtures.sh
+/fixtures/*
+!/fixtures/poisoned_cp1252.ini

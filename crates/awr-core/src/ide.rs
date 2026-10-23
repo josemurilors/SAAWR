@@ -42,6 +42,9 @@ mod tests {
 
     #[test]
     fn ide_clone_changes_only_the_named_columns() {
+        if !crate::testutil::have_game_fixtures() {
+            return;
+        }
         let r = refs();
         let line = clone_ide(get(&r, "landstal"), 12500, "gtr34");
         assert_eq!(
@@ -52,6 +55,9 @@ mod tests {
 
     #[test]
     fn malformed_reference_line_still_clones() {
+        if !crate::testutil::have_game_fixtures() {
+            return;
+        }
         let r = refs();
         let line = clone_ide(get(&r, "emperor"), 12501, "emp2");
         assert!(line.starts_with(b"12501,\temp2\t\temp2, \tcar, \t\tEMP2, \tEMP2,"));
@@ -59,6 +65,9 @@ mod tests {
 
     #[test]
     fn carcols_and_fxt() {
+        if !crate::testutil::have_game_fixtures() {
+            return;
+        }
         let r = refs();
         let c = clone_carcols(get(&r, "landstal"), "gtr34").unwrap();
         assert_eq!(

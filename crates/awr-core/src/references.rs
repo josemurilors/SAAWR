@@ -173,11 +173,17 @@ pub(crate) mod tests {
 
     #[test]
     fn all_212_original_vehicles_have_a_handling_line() {
+        if !crate::testutil::have_game_fixtures() {
+            return;
+        }
         assert_eq!(refs().len(), 212);
     }
 
     #[test]
     fn landstal_is_a_car_with_all_lines() {
+        if !crate::testutil::have_game_fixtures() {
+            return;
+        }
         let r = refs();
         let v = get(&r, "landstal");
         assert_eq!(
@@ -192,6 +198,9 @@ pub(crate) mod tests {
 
     #[test]
     fn bikes_boats_and_aircraft_bring_their_special_line() {
+        if !crate::testutil::have_game_fixtures() {
+            return;
+        }
         let r = refs();
         for (model, prefix) in [
             ("pcj600", b'!'),
@@ -206,6 +215,9 @@ pub(crate) mod tests {
 
     #[test]
     fn malformed_ide_lines_still_parse() {
+        if !crate::testutil::have_game_fixtures() {
+            return;
+        }
         let r = refs();
         assert_eq!(get(&r, "emperor").kind, "car");
         assert_eq!(get(&r, "dodo").kind, "plane");

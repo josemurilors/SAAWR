@@ -62,6 +62,9 @@ mod tests {
 
     #[test]
     fn real_file_insert_above_sentinel_without_adding_final_newline() {
+        if !crate::testutil::have_game_fixtures() {
+            return;
+        }
         let f = std::fs::read(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../fixtures/gtasa_vehicleAudioSettings.cfg"

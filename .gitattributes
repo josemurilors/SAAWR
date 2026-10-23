@@ -6,3 +6,4 @@
 *.fxt -text
 *.expected -text
 fixtures/** -text
+*.sh text eol=lf

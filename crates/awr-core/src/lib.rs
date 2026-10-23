@@ -13,6 +13,8 @@ pub mod inventory;
 pub mod meta;
 pub mod paths;
 pub mod references;
+#[cfg(test)]
+mod testutil;
 pub mod text;
 pub mod validators;
 

@@ -338,12 +338,18 @@ mod tests {
 
     #[test]
     fn golden_one_car_sync() {
+        if !crate::testutil::have_game_fixtures() {
+            return;
+        }
         let (out, _) = sync(&fixture("fla_original.ini"), &plan(&one_car()));
         assert_eq!(out, fixture("fla_expected_sync_one_car.ini"));
     }
 
     #[test]
     fn ola_keys_stay_disabled_and_byte_exact() {
+        if !crate::testutil::have_game_fixtures() {
+            return;
+        }
         let original = fixture("fla_original.ini");
         let needs = Needs {
             weapons: 1,
@@ -365,6 +371,9 @@ mod tests {
 
     #[test]
     fn second_sync_is_a_no_op_and_limits_never_shrink() {
+        if !crate::testutil::have_game_fixtures() {
+            return;
+        }
         let (once, _) = sync(&fixture("fla_original.ini"), &plan(&one_car()));
         let (twice, changes) = sync(&once, &plan(&one_car()));
         assert_eq!(twice, once);

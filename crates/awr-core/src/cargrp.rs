@@ -104,6 +104,9 @@ mod tests {
 
     #[test]
     fn real_file_round_trip_and_group_size() {
+        if !crate::testutil::have_game_fixtures() {
+            return;
+        }
         let f = std::fs::read(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../fixtures/cargrp.dat"

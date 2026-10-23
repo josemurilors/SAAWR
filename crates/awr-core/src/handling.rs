@@ -22,6 +22,9 @@ mod tests {
 
     #[test]
     fn landstal_clone_keeps_tabs_and_spaces() {
+        if !crate::testutil::have_game_fixtures() {
+            return;
+        }
         let r = refs();
         let (line, special) = clone_lines(get(&r, "landstal"), "gtr34");
         // "LANDSTAL" is 8 bytes; everything after it must be untouched
@@ -32,6 +35,9 @@ mod tests {
 
     #[test]
     fn bike_clone_renames_both_lines() {
+        if !crate::testutil::have_game_fixtures() {
+            return;
+        }
         let r = refs();
         let (line, special) = clone_lines(get(&r, "pcj600"), "mybike");
         assert!(line.starts_with(b"MYBIKE"));
