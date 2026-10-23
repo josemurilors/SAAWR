@@ -125,6 +125,12 @@ e inventário vazio; CI verde.
 barco), spawnar no jogo, removê-los; `repair` não acha resíduo; `diff` dos arquivos
 originais em `data\` = zero; `.ini` do FLA só mudou nas chaves geridas.
 
+## Resultado da Fase 3 (armas)
+
+Confirmado no jogo (2026-10-23): o ModLoader aceita `IDE DATA\MAPS\{short}.ide` no `Loader.txt` e as
+linhas `$`/`£` do `weapon.dat` no mesmo arquivo; a arma nova usa o tipo de arma a partir de 70 no
+`gtasa_weapon_config.dat`. Armadilha: o RZL Trainer pede o **tipo** (70), não o ID do modelo (12400).
+
 ## Fases 2–4 (resumo; detalhar ao fim da Fase 1)
 
 - **2. UI egui** tela única §6 sobre `AwrCore` (drop, dropdown de referência, lista,

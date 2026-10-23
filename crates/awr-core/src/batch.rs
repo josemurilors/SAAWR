@@ -5,6 +5,7 @@
 use crate::pack::{self, PackFiles};
 use crate::references::VehicleRef;
 use crate::validators;
+use crate::weapons::WeaponRef;
 use std::{collections::BTreeSet, fs, path::Path, path::PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,6 +29,20 @@ pub fn guess_reference(files: &PackFiles, refs: &[VehicleRef]) -> Option<String>
     refs.iter()
         .find(|r| r.model == stem)
         .map(|r| r.model.clone())
+}
+
+/// `.dff` named after an original weapon model (`gun_dildo1.dff`) means "clone that one".
+pub fn guess_weapon(files: &PackFiles, weapons: &[WeaponRef]) -> Option<String> {
+    let stem = files
+        .dff
+        .as_ref()?
+        .file_stem()?
+        .to_string_lossy()
+        .to_lowercase();
+    weapons
+        .iter()
+        .find(|w| w.model.to_lowercase() == stem)
+        .map(|w| w.name.clone())
 }
 
 /// First free short: the name's own letters, then with a number (`launch` -> `launc2`).
@@ -96,6 +111,31 @@ mod tests {
 
     fn set(items: &[&str]) -> BTreeSet<String> {
         items.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn dff_named_after_a_weapon_model_picks_that_weapon() {
+        let w = |name: &str, model: &str| WeaponRef {
+            name: name.into(),
+            melee: true,
+            model_id: 321,
+            model: model.into(),
+            dat_lines: vec![],
+            ide_line: vec![],
+            object_line: None,
+            config_line: vec![],
+            associated: vec![],
+        };
+        let weapons = [w("DILDO1", "gun_dildo1"), w("KATANA", "katana")];
+        let files = |dff: &str| PackFiles {
+            dff: Some(PathBuf::from(dff)),
+            ..Default::default()
+        };
+        assert_eq!(
+            guess_weapon(&files("x/GUN_DILDO1.dff"), &weapons).as_deref(),
+            Some("DILDO1")
+        );
+        assert_eq!(guess_weapon(&files("x/luger.dff"), &weapons), None);
     }
 
     #[test]

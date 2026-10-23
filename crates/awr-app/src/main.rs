@@ -13,7 +13,7 @@ use awr_core::{
     paths::{self, InstallInfo},
     references::{self, VehicleRef},
     validators,
-    weapons::{self, WeaponRef},
+    weapons::{self, InjectWeapon, WeaponRef},
 };
 use eframe::egui::{self, Color32, RichText};
 use std::{
@@ -87,15 +87,19 @@ struct Item {
     audio: bool,
     /// Use the handling the pack ships (when it has one) instead of copying the reference.
     use_handling: bool,
+    /// A weapon instead of a vehicle: `reference` is then a `weapon.dat` name.
+    weapon: bool,
     include: bool,
 }
 
 impl Item {
-    fn from(c: Candidate) -> Self {
+    fn from(c: Candidate, weapon_guess: Option<String>) -> Self {
+        let weapon = c.reference.is_none() && weapon_guess.is_some();
         Item {
             name: c.name,
             short: c.short,
-            reference: c.reference.unwrap_or_default(),
+            reference: c.reference.or(weapon_guess).unwrap_or_default(),
+            weapon,
             files: c.files,
             traffic: Traffic::Auto,
             audio: true,
@@ -112,9 +116,12 @@ impl Item {
         if dup {
             return Some("nome curto repetido na fila".into());
         }
-        validators::check_short(&self.short, |s| taken.contains(s))
-            .err()
-            .map(|e| e.to_string())
+        let checked = if self.weapon {
+            validators::check_weapon_name(&self.short, |s| taken.contains(s))
+        } else {
+            validators::check_short(&self.short, |s| taken.contains(s))
+        };
+        checked.err().map(|e| e.to_string())
     }
 }
 
@@ -250,6 +257,7 @@ impl App {
             return self.say("erro: abra a pasta do GTA SA antes de adicionar veículos");
         };
         let refs = inj.refs;
+        let weapons = inj.weapons;
         let mut taken = inj.taken_shorts();
         taken.extend(self.queue.iter().map(|i| i.short.clone()));
         let mut found: Vec<Candidate> = vec![];
@@ -282,11 +290,18 @@ impl App {
                 files,
             });
         }
-        if found.is_empty() {
+        let items: Vec<Item> = found
+            .into_iter()
+            .map(|c| {
+                let guess = batch::guess_weapon(&c.files, weapons);
+                Item::from(c, guess)
+            })
+            .collect();
+        if items.is_empty() {
             self.say("nada reconhecido: precisa de uma pasta com .dff + .txd");
         } else {
-            self.say(format!("{} veículo(s) na fila", found.len()));
-            self.queue.extend(found.into_iter().map(Item::from));
+            self.say(format!("{} item(ns) na fila", items.len()));
+            self.queue.extend(items);
         }
     }
 
@@ -300,6 +315,20 @@ impl App {
             let done = item.include && {
                 let r = item.files.dff.as_deref().zip(item.files.txd.as_deref());
                 match (r, self.injector()) {
+                    (Some((dff, txd)), Some(inj)) if item.weapon => {
+                        let res = inj.inject_weapon(&InjectWeapon {
+                            short: &item.short,
+                            dff,
+                            txd,
+                            reference: &item.reference,
+                            created: &meta::rfc3339(secs),
+                        });
+                        match &res {
+                            Ok(k) => logs.push(format!("injetada: {}", k.display())),
+                            Err(e) => logs.push(format!("erro em {}: {e}", item.name)),
+                        }
+                        res.is_ok()
+                    }
                     (Some((dff, txd)), Some(inj)) => {
                         let res = inj.inject_vehicle(&InjectVehicle {
                             name: &item.name,
@@ -393,10 +422,13 @@ impl App {
                     if item.include && problem.is_none() {
                         ready += 1;
                     }
-                    let kind = game
-                        .as_ref()
-                        .and_then(|g| g.refs.iter().find(|r| r.model == item.reference))
-                        .map_or(Kind::Car, |r| Kind::of(&r.kind));
+                    let kind = if item.weapon {
+                        Kind::Weapon
+                    } else {
+                        game.as_ref()
+                            .and_then(|g| g.refs.iter().find(|r| r.model == item.reference))
+                            .map_or(Kind::Car, |r| Kind::of(&r.kind))
+                    };
                     card(ui, !item.include, |ui| {
                         ui.horizontal(|ui| {
                             icon(ui, kind, if item.include { GOLD } else { MUTED });
@@ -413,13 +445,28 @@ impl App {
                         });
                         if let Some(g) = game.as_ref() {
                             ui.horizontal(|ui| {
+                                let a = ui.selectable_value(&mut item.weapon, false, "Veículo");
+                                let b = ui.selectable_value(&mut item.weapon, true, "Arma");
+                                if a.changed() || b.changed() {
+                                    item.reference.clear();
+                                }
                                 ui.label("Ref:");
-                                ref_combo(ui, n, &g.refs, &mut item.reference, ref_filter);
-                                ui.label("Tráfego:");
-                                traffic_combo(ui, n, &g.groups, &mut item.traffic);
+                                if item.weapon {
+                                    weapon_combo(
+                                        ui,
+                                        n,
+                                        &g.weapons,
+                                        &mut item.reference,
+                                        ref_filter,
+                                    );
+                                } else {
+                                    ref_combo(ui, n, &g.refs, &mut item.reference, ref_filter);
+                                    ui.label("Tráfego:");
+                                    traffic_combo(ui, n, &g.groups, &mut item.traffic);
+                                }
                             });
                         }
-                        if item.files.handling.is_some() {
+                        if !item.weapon && item.files.handling.is_some() {
                             ui.checkbox(
                                 &mut item.use_handling,
                                 "Usar o handling do pacote (readme)",
@@ -434,7 +481,9 @@ impl App {
                         .filter(|(on, _)| *on)
                         .map(|(_, n)| *n)
                         .collect();
-                        let info = if extras.is_empty() {
+                        let info = if item.weapon {
+                            "arma: modelo e textura (ícone do HUD renomeado)".to_string()
+                        } else if extras.is_empty() {
                             "só modelo e textura".to_string()
                         } else {
                             format!("inclui {}", extras.join(", "))
@@ -504,7 +553,7 @@ impl App {
 
     fn installed_card(&mut self, ui: &mut egui::Ui, row: &Row, groups: &[Group]) {
         let m = &row.m;
-        let Some(meta) = m.meta.as_ref().filter(|x| x.kind == ModKind::Vehicle) else {
+        let Some(meta) = m.meta.as_ref() else {
             card(ui, true, |ui| {
                 ui.horizontal(|ui| {
                     icon(ui, Kind::Car, MUTED);
@@ -680,8 +729,11 @@ impl Row {
     }
 
     fn kind(&self) -> Option<Kind> {
-        let t = self.m.meta.as_ref()?.vehicle_type.as_deref()?;
-        Some(Kind::of(t))
+        let m = self.m.meta.as_ref()?;
+        if m.kind == ModKind::Weapon {
+            return Some(Kind::Weapon);
+        }
+        Some(Kind::of(m.vehicle_type.as_deref()?))
     }
 
     /// `ref: uranus · tuning (14) · paintjobs (4) · cores IVF · tráfego: ...`
@@ -689,6 +741,14 @@ impl Row {
         let Some(m) = &self.m.meta else {
             return String::new();
         };
+        if m.kind == ModKind::Weapon {
+            return format!(
+                "arma · tipo {} (use este número em trainers e scripts) · modelo {} · ref: {}",
+                m.weapon_type_id.unwrap_or_default(),
+                m.id,
+                m.reference
+            );
+        }
         let mut v = vec![format!("ref: {}", m.reference)];
         if !m.parts.is_empty() {
             v.push(format!("tuning ({})", m.parts.len()));
@@ -724,10 +784,11 @@ enum Kind {
     Bike,
     Boat,
     Plane,
+    Weapon,
 }
 
 impl Kind {
-    const ALL: [Kind; 4] = [Kind::Car, Kind::Bike, Kind::Boat, Kind::Plane];
+    const ALL: [Kind; 5] = [Kind::Car, Kind::Bike, Kind::Boat, Kind::Plane, Kind::Weapon];
 
     /// From the IDE type column (car, bike, bmx, boat, plane, heli, quad, ...).
     fn of(t: &str) -> Kind {
@@ -745,6 +806,7 @@ impl Kind {
             Kind::Bike => "Motos",
             Kind::Boat => "Barcos",
             Kind::Plane => "Aviões",
+            Kind::Weapon => "Armas",
         }
     }
 }
@@ -800,6 +862,20 @@ fn icon(ui: &mut egui::Ui, kind: Kind, color: Color32) {
             line(&[(14.0, 17.0), (19.0, 30.0), (23.0, 30.0), (21.0, 17.0)]);
             line(&[(4.0, 17.0), (2.0, 12.0)]);
         }
+        Kind::Weapon => {
+            line(&[
+                (3.0, 12.0),
+                (24.0, 12.0),
+                (24.0, 17.0),
+                (16.0, 17.0),
+                (14.0, 28.0),
+                (9.0, 28.0),
+                (10.0, 17.0),
+                (3.0, 17.0),
+                (3.0, 12.0),
+            ]);
+            line(&[(24.0, 14.0), (31.0, 14.0)]);
+        }
     }
 }
 
@@ -840,6 +916,33 @@ fn ref_combo(
                     r.model.clone(),
                     format!("{} ({})", r.model, r.kind),
                 );
+            }
+        });
+}
+
+/// Weapon picker (original weapons by their `weapon.dat` name).
+fn weapon_combo(
+    ui: &mut egui::Ui,
+    n: usize,
+    weapons: &[WeaponRef],
+    selected: &mut String,
+    filter: &mut String,
+) {
+    egui::ComboBox::from_id_salt(("weapon", n))
+        .width(150.0)
+        .selected_text(if selected.is_empty() {
+            "escolha..."
+        } else {
+            selected.as_str()
+        })
+        .show_ui(ui, |ui| {
+            ui.add(egui::TextEdit::singleline(filter).hint_text("filtrar"));
+            let f = filter.to_ascii_lowercase();
+            for w in weapons
+                .iter()
+                .filter(|w| w.name.to_ascii_lowercase().contains(&f))
+            {
+                ui.selectable_value(selected, w.name.clone(), &w.name);
             }
         });
 }

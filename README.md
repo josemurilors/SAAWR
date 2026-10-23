@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/josemurilors/SAAWR/actions/workflows/ci.yml"><img src="https://github.com/josemurilors/SAAWR/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <img src="https://img.shields.io/badge/status-ve%C3%ADculos_prontos-green" alt="Status">
+  <img src="https://img.shields.io/badge/status-ve%C3%ADculos_e_armas_prontos-green" alt="Status">
   <img src="https://img.shields.io/badge/stack-Rust-orange" alt="Stack">
   <img src="https://img.shields.io/badge/jogo-GTA_SA_1.0_US-blue" alt="Jogo">
   <img src="https://img.shields.io/badge/licen%C3%A7a-MIT-green" alt="Licença">
@@ -17,7 +17,7 @@
 | | |
 | --- | --- |
 | **Versão** | 0.1.0 (v2, reescrita do zero) |
-| **Estado** | Veículos prontos e testados no jogo (carro, moto, barco e avião), com CLI e interface; armas pendentes |
+| **Estado** | Veículos (carro, moto, barco, avião) e armas (pistola, fuzil, corpo a corpo) prontos e testados no jogo, com CLI e interface; release e polimento pendentes |
 | **Contexto** | Projeto pessoal; segue os tutoriais MixMods de carros e armas sem substituir |
 | **Alvo** | Windows, GTA SA 1.0 US com ModLoader + fastman92 Limit Adjuster + Open Limit Adjuster |
 
@@ -67,7 +67,8 @@ O SA-AWR automatiza o método "adicionar sem substituir" dos tutoriais MixMods. 
 - **Tráfego à escolha:** como a referência, nenhum, ou um dos grupos do `cargrp.dat`.
 - **Lote:** uma pasta com subpastas vira uma fila; o nome vem da pasta e a referência do nome do `.dff` (`sanchez.dff` sugere `sanchez`).
 - **Checker:** bloqueia a injeção sem ModLoader, FLA ou OLA e avisa de `cargrp.dat` duplicado, limites do OLA ativos no `.ini` e jogo aberto.
-- **CLI** (`status`, `doctor`, `groups`, `inject`, `batch`, `enable`, `disable`, `remove`, `repair`) e **interface egui** com abas Importar/Instalados.
+- **Armas:** pasta própria em `modloader/awr-weapons` com o `.ide`, o `Loader.txt` (linhas de `weapon.dat` e `object.dat` clonadas da arma de referência) e, no FLA, a linha do `gtasa_weapon_config.dat` com um tipo de arma novo (a partir de 70). As texturas de HUD (`*icon`, `*crosshair`) do `.txd` são renomeadas para a nova arma.
+- **CLI** (`status`, `doctor`, `groups`, `weapons`, `inject`, `inject-weapon`, `batch`, `enable`, `disable`, `remove`, `repair`) e **interface egui** com abas Importar/Instalados.
 
 ## 2. Princípios
 
@@ -107,7 +108,7 @@ flowchart LR
 ```text
 SAAWR/
 ├── crates/
-│   ├── awr-core/src/   # lógica: injector, checker, batch, pack, tuning, fla, references, ids…
+│   ├── awr-core/src/   # lógica: injector, weapons, checker, batch, pack, readme, tuning, fla, references, ids…
 │   ├── awr-cli/src/    # binário `awr-cli`
 │   └── awr-app/src/    # interface egui (`awr-app`)
 ├── fixtures/           # poisoned_cp1252.ini versionado; arquivos do jogo só locais
@@ -151,6 +152,8 @@ Os testes não substituem o teste no jogo. O formato de pasta do ModLoader, o ha
 
 Carros de packs com recursos do ImVehFt/VehFuncs (rodas variáveis, luzes) precisam desses plugins instalados no jogo.
 
+**Armas:** trainers e scripts usam o **tipo** da arma (70, 71, …), não o ID do modelo (12400, …). Dar o ID do modelo como tipo derruba o jogo. O inventário mostra o tipo de cada arma instalada. Ex.: `awr-cli inject-weapon --short luger --ref PISTOL --pack "<pasta>" --gta "<jogo>"`.
+
 ### Testes
 
 ```bash
@@ -171,11 +174,12 @@ Sem as fixtures do jogo (como na CI), os testes que dependem delas avisam "pulad
 - [x] Fase 1: 4 veículos reais injetados e removidos numa cópia do jogo, sem resíduo; `data\` idêntico ao original.
 - [x] Pacote com peças de tuning, paintjobs e cores IVF funcionando no jogo.
 - [x] Fase 2: interface egui (importar, lote, tráfego, inventário, health). O visual definitivo fica para depois.
-- [ ] Fase 3: armas. Fase 4: release `.exe` portable.
+- [x] Fase 3: armas (pistola, fuzil e arma branca) injetadas, testadas no jogo e removidas sem resíduo; o `gtasa_weapon_config.dat` volta idêntico ao `.bak`.
+- [ ] Fase 4: release `.exe` portable.
 
 ## 9. Limites de escopo e evolução
 
-**Dentro:** carros, motos, barcos, aeronaves e armas novos via ModLoader, com peças de tuning, paintjobs e cores IVF do pacote (renomeadas para o carro). **Fora:** edição de handling campo a campo, múltiplos perfis do ModLoader, Android, telemetria e rede. **Pendências conhecidas:** armas; usar o carcols que o pacote traz no readme (o handling já é usado); áudio "silencioso" (hoje sem áudio clonado não foi testado no jogo); scripts CLEO de pacotes; redesenho visual da interface. **Evoluções possíveis:** importação de mods de terceiros e interface em inglês.
+**Dentro:** carros, motos, barcos, aeronaves e armas novos via ModLoader, com peças de tuning, paintjobs e cores IVF do pacote (renomeadas para o carro). **Fora:** edição de handling campo a campo, múltiplos perfis do ModLoader, Android, telemetria e rede. **Pendências conhecidas:** armas especiais (silenciador, jetpack, binóculos, lançadores já herdam as linhas associadas); usar as linhas de arma do readme do pacote (hoje clona a referência); usar o carcols que o pacote traz no readme (o handling já é usado); áudio "silencioso" (hoje sem áudio clonado não foi testado no jogo); scripts CLEO de pacotes; redesenho visual da interface. **Evoluções possíveis:** importação de mods de terceiros e interface em inglês.
 
 ## 10. Documentação complementar
 
