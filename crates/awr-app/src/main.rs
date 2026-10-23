@@ -95,13 +95,12 @@ struct Item {
 }
 
 impl Item {
-    fn from(c: Candidate, weapon_guess: Option<String>) -> Self {
-        let weapon = c.reference.is_none() && weapon_guess.is_some();
+    fn from(c: Candidate) -> Self {
         Item {
             name: c.name,
             short: c.short,
-            reference: c.reference.or(weapon_guess).unwrap_or_default(),
-            weapon,
+            reference: c.reference.unwrap_or_default(),
+            weapon: c.weapon,
             files: c.files,
             traffic: Traffic::Auto,
             audio: true,
@@ -259,52 +258,14 @@ impl App {
         let Some(inj) = self.injector() else {
             return self.say("erro: abra a pasta do GTA SA antes de adicionar veículos");
         };
-        let refs = inj.refs;
-        let weapons = inj.weapons;
         let mut taken = inj.taken_shorts();
         taken.extend(self.queue.iter().map(|i| i.short.clone()));
-        let mut found: Vec<Candidate> = vec![];
-        for p in paths.iter().filter(|p| p.is_dir()) {
-            let c = batch::scan(p, refs, &taken);
-            taken.extend(c.iter().map(|c| c.short.clone()));
-            found.extend(c);
-        }
-        for dff in paths.iter().filter(|p| ext_is(p, "dff")) {
-            let txd = paths
-                .iter()
-                .find(|p| ext_is(p, "txd") && p.file_stem() == dff.file_stem());
-            let Some(txd) = txd else { continue };
-            let name = dff
-                .file_stem()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            let files = PackFiles {
-                dff: Some(dff.clone()),
-                txd: Some(txd.clone()),
-                ..Default::default()
-            };
-            let short = batch::suggest_short(&name, &taken);
-            taken.insert(short.clone());
-            found.push(Candidate {
-                folder: dff.parent().map(Path::to_path_buf).unwrap_or_default(),
-                reference: batch::guess_reference(&files, refs),
-                name,
-                short,
-                files,
-            });
-        }
-        let items: Vec<Item> = found
-            .into_iter()
-            .map(|c| {
-                let guess = batch::guess_weapon(&c.files, weapons);
-                Item::from(c, guess)
-            })
-            .collect();
-        if items.is_empty() {
+        let found = batch::from_paths(&paths, inj.refs, inj.weapons, &mut taken);
+        if found.is_empty() {
             self.say("nada reconhecido: precisa de uma pasta com .dff + .txd");
         } else {
-            self.say(format!("{} item(ns) na fila", items.len()));
-            self.queue.extend(items);
+            self.say(format!("{} item(ns) na fila", found.len()));
+            self.queue.extend(found.into_iter().map(Item::from));
         }
     }
 
@@ -986,10 +947,6 @@ fn traffic_combo(ui: &mut egui::Ui, n: usize, groups: &[Group], traffic: &mut Tr
 fn group_label(g: &Group) -> String {
     let l = g.label.strip_prefix("POPCYCLE_GROUP_").unwrap_or(&g.label);
     format!("{} - {}", g.index, l.replace('_', " ").to_lowercase())
-}
-
-fn ext_is(p: &Path, ext: &str) -> bool {
-    p.extension().is_some_and(|e| e.eq_ignore_ascii_case(ext))
 }
 
 fn file_name(p: &Path) -> String {

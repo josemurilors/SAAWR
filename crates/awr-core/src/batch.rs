@@ -15,6 +15,8 @@ pub struct Candidate {
     pub short: String,
     /// Original model the pack was made to replace, if the `.dff` name says so.
     pub reference: Option<String>,
+    /// `reference` is a weapon name (`weapon.dat`), not a vehicle model.
+    pub weapon: bool,
     pub files: PackFiles,
 }
 
@@ -81,6 +83,7 @@ fn candidate(
         name,
         short,
         reference: guess_reference(&files, refs),
+        weapon: false,
         files,
     })
 }
@@ -103,6 +106,58 @@ pub fn scan(dir: &Path, refs: &[VehicleRef], taken: &BTreeSet<String>) -> Vec<Ca
     subs.iter()
         .filter_map(|s| candidate(s, refs, &mut taken))
         .collect()
+}
+
+/// Everything the user dropped or picked: pack folders, folders of packs, loose `.dff` +
+/// `.txd` pairs. A `.dff` named after an original weapon model becomes a weapon.
+/// `taken` grows with the shorts handed out, so a whole drop gets distinct names.
+pub fn from_paths(
+    paths: &[PathBuf],
+    refs: &[VehicleRef],
+    weapons: &[WeaponRef],
+    taken: &mut BTreeSet<String>,
+) -> Vec<Candidate> {
+    let mut found: Vec<Candidate> = vec![];
+    for p in paths.iter().filter(|p| p.is_dir()) {
+        let c = scan(p, refs, taken);
+        taken.extend(c.iter().map(|c| c.short.clone()));
+        found.extend(c);
+    }
+    let is = |p: &Path, ext: &str| p.extension().is_some_and(|e| e.eq_ignore_ascii_case(ext));
+    for dff in paths.iter().filter(|p| is(p, "dff")) {
+        let Some(txd) = paths
+            .iter()
+            .find(|p| is(p, "txd") && p.file_stem() == dff.file_stem())
+        else {
+            continue;
+        };
+        let name = dff
+            .file_stem()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let files = PackFiles {
+            dff: Some(dff.clone()),
+            txd: Some(txd.clone()),
+            ..Default::default()
+        };
+        let short = suggest_short(&name, taken);
+        taken.insert(short.clone());
+        found.push(Candidate {
+            folder: dff.parent().map(Path::to_path_buf).unwrap_or_default(),
+            reference: guess_reference(&files, refs),
+            weapon: false,
+            name,
+            short,
+            files,
+        });
+    }
+    for c in found.iter_mut().filter(|c| c.reference.is_none()) {
+        if let Some(w) = guess_weapon(&c.files, weapons) {
+            c.reference = Some(w);
+            c.weapon = true;
+        }
+    }
+    found
 }
 
 #[cfg(test)]
