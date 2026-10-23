@@ -7,11 +7,11 @@ use crate::checker::{self, Severity};
 use crate::error::{AwrError, NotFoundKind, Result};
 use crate::fla::{self, Needs};
 use crate::inventory::{self, ModKey, CARS_DIR, DISABLED_PREFIX};
-use crate::meta::{self, Files, Meta, ModKind};
+use crate::meta::{self, Files, Meta, ModKind, Part};
 use crate::paths::InstallInfo;
 use crate::references::VehicleRef;
-use crate::{audio, cargrp, fsutil, handling, ide, ids, validators};
-use std::{fs, io, path::Path, path::PathBuf};
+use crate::{audio, cargrp, fsutil, handling, ide, ids, tuning, validators};
+use std::{collections::BTreeSet, fs, io, path::Path, path::PathBuf};
 
 /// `. ` prefix: ModLoader ignores it, so a half-built mod is never loaded by accident.
 const STAGING: &str = ". awr-staging";
@@ -38,6 +38,32 @@ pub struct InjectVehicle<'a> {
     /// Clone the reference's engine sound.
     pub audio: bool,
     pub created: &'a str,
+    /// Folder of `{ref}N.txd` paintjobs, renamed to `{short}N.txd`.
+    pub paintjobs: Option<&'a Path>,
+    /// Folder of tuning part `.dff`s, renamed per car and given their own model IDs.
+    pub parts: Option<&'a Path>,
+    /// ImVehFt color file; its `vehicle_id` is pointed at the new ID.
+    pub ivfc: Option<&'a Path>,
+}
+
+/// Files of a vehicle pack beyond the car itself, already renamed.
+struct Pack {
+    /// `(original stem, source file, renamed part)`.
+    parts: Vec<(String, PathBuf, Part)>,
+    /// `(source file, new file name)`.
+    paintjobs: Vec<(PathBuf, String)>,
+}
+
+/// Files of `dir` with the given extension, sorted so IDs are deterministic.
+fn files_with(dir: &Path, ext: &str) -> Result<Vec<(String, PathBuf)>> {
+    let mut out: Vec<(String, PathBuf)> = io_at(dir, fs::read_dir(dir))?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case(ext)))
+        .filter_map(|p| Some((p.file_stem()?.to_string_lossy().into_owned(), p)))
+        .collect();
+    out.sort();
+    Ok(out)
 }
 
 fn io_at<T>(path: &Path, r: io::Result<T>) -> Result<T> {
@@ -56,18 +82,21 @@ impl Injector<'_> {
             .fla_ini()
             .ok_or(AwrError::NotFound(NotFoundKind::FlaIni))?;
         let r = self.reference(req.reference)?;
-        let installed: Vec<String> = inventory::scan(&ml)
+        let installed: Vec<Meta> = inventory::scan(&ml)
             .into_iter()
-            .filter_map(|m| m.meta.map(|m| m.short))
+            .filter_map(|m| m.meta)
             .collect();
         validators::check_short(req.short, |s| {
-            installed.iter().any(|i| i == s)
+            installed.iter().any(|i| i.short == s)
                 || self.refs.iter().any(|v| {
                     v.model.eq_ignore_ascii_case(s) || v.handling_id.eq_ignore_ascii_case(s)
                 })
         })?;
-        let used = ids::collect_used_ids(self.refs.iter().map(|v| v.id), &ml);
+        let mut used = ids::collect_used_ids(self.refs.iter().map(|v| v.id), &ml);
+        used.extend(installed.iter().flat_map(|m| m.parts.iter().map(|p| p.id)));
         let id = ids::allocate_vehicle(&used, self.id_floor)?;
+        used.insert(id);
+        let pack = self.pack(req, r, &mut used)?;
 
         let folder = format!("{id}-{}", req.short);
         let dest = ml.join(CARS_DIR).join(&folder);
@@ -91,12 +120,29 @@ impl Injector<'_> {
                 txd: format!("{}.txd", req.short),
                 fxt: Some(format!("{}.fxt", req.short)),
             },
+            parts: pack.parts.iter().map(|p| p.2.clone()).collect(),
         };
 
         let stage = ml.join(STAGING).join(&folder);
         io_at(&stage, fs::create_dir_all(&stage))?;
         for (src, name) in [(req.dff, &m.files.dff), (req.txd, &m.files.txd)] {
             io_at(src, fs::copy(src, stage.join(name)))?;
+        }
+        for (src, name) in pack
+            .parts
+            .iter()
+            .map(|p| (&p.1, format!("{}.dff", p.2.name)))
+        {
+            io_at(src, fs::copy(src, stage.join(name)))?;
+        }
+        for (src, name) in &pack.paintjobs {
+            io_at(src, fs::copy(src, stage.join(name)))?;
+        }
+        if let Some(src) = req.ivfc {
+            let dir = stage.join("ImVehFt").join("colors");
+            io_at(&dir, fs::create_dir_all(&dir))?;
+            let bytes = tuning::retarget_ivfc(&fsutil::read(src)?, id);
+            fsutil::write_atomic(&dir.join(format!("{}.ivfc", req.short)), &bytes)?;
         }
         let eol = b"\r\n";
         let fxt = [&ide::fxt_line(req.short, req.name)[..], eol].concat();
@@ -106,7 +152,7 @@ impl Injector<'_> {
         )?;
         fsutil::write_atomic(
             &stage.join("linhas.txt"),
-            &self.lines_file(r, id, req.short),
+            &self.lines_file(r, id, req.short, &pack),
         )?;
         meta::write(&stage, &m)?;
 
@@ -197,18 +243,68 @@ impl Injector<'_> {
     }
 
     /// Everything ModLoader should match by content: handling, IDE and carcols.
-    fn lines_file(&self, r: &VehicleRef, id: u32, short: &str) -> Vec<u8> {
+    fn lines_file(&self, r: &VehicleRef, id: u32, short: &str, pack: &Pack) -> Vec<u8> {
         let (standard, special) = handling::clone_lines(r, short);
-        [
+        let data = self.info.data();
+        let carmods = fsutil::read(&data.join("carmods.dat")).ok();
+        let veh_mods = fsutil::read(&data.join("maps/veh_mods/veh_mods.ide")).ok();
+        let renames: Vec<(String, String)> = pack
+            .parts
+            .iter()
+            .map(|(stem, _, p)| (stem.clone(), p.name.clone()))
+            .collect();
+        let ref_txd = ide_txd(&r.ide_line);
+        let mut lines = vec![
             Some(standard),
             special,
             Some(ide::clone_ide(r, id, short)),
             ide::clone_carcols(r, short),
-        ]
-        .into_iter()
-        .flatten()
-        .flat_map(|l| [l, b"\r\n".to_vec()].concat())
-        .collect()
+            carmods
+                .as_deref()
+                .and_then(|c| tuning::carmods_line(c, &r.model))
+                .map(|l| tuning::clone_carmods(l, short, &renames)),
+        ];
+        lines.extend(pack.parts.iter().map(|(stem, _, p)| {
+            Some(tuning::part_ide(
+                veh_mods.as_deref(),
+                stem,
+                p.id,
+                &p.name,
+                &ref_txd,
+                short,
+            ))
+        }));
+        lines
+            .into_iter()
+            .flatten()
+            .flat_map(|l| [l, b"\r\n".to_vec()].concat())
+            .collect()
+    }
+
+    /// Renames the pack's parts and paintjobs; part IDs come right after the car's.
+    fn pack(&self, req: &InjectVehicle, r: &VehicleRef, used: &mut BTreeSet<u32>) -> Result<Pack> {
+        let mut pack = Pack {
+            parts: vec![],
+            paintjobs: vec![],
+        };
+        if let Some(dir) = req.parts {
+            for (stem, path) in files_with(dir, "dff")? {
+                let name = tuning::rename(&stem, req.short);
+                validators::check_part_name(&name)?;
+                let id = ids::allocate_vehicle(used, self.id_floor)?;
+                used.insert(id);
+                pack.parts.push((stem, path, Part { name, id }));
+            }
+        }
+        if let Some(dir) = req.paintjobs {
+            for (stem, path) in files_with(dir, "txd")? {
+                let file = format!("{stem}.txd");
+                if let Some(new) = tuning::paintjob_name(&file, &r.model, req.short) {
+                    pack.paintjobs.push((path, new));
+                }
+            }
+        }
+        Ok(pack)
     }
 
     /// Adds (or removes) the mod's lines in the audio cfg and the traffic cargrp.
@@ -279,7 +375,8 @@ impl Injector<'_> {
             let Some(m) = m.meta.filter(|m| m.kind == ModKind::Vehicle) else {
                 continue;
             };
-            needs.max_model_id = needs.max_model_id.max(Some(m.id));
+            let top = m.parts.iter().map(|p| p.id).fold(m.id, u32::max);
+            needs.max_model_id = needs.max_model_id.max(Some(top));
             match m.vehicle_type.as_deref() {
                 Some("bike" | "bmx") => needs.bikes += 1,
                 Some("boat") => needs.boats += 1,
@@ -296,6 +393,14 @@ impl Injector<'_> {
         needs.max_cargrp_group_len = cargrp::max_group_len(&fsutil::read(&file)?);
         edit_global(&ini, |f| fla::sync(f, &fla::plan(&needs)).0)
     }
+}
+
+/// TXD column of an IDE vehicle line (parts of the reference car point at it).
+fn ide_txd(line: &[u8]) -> String {
+    let t = crate::text::tokens(line);
+    t.get(2)
+        .map(|&(s, e)| String::from_utf8_lossy(&line[s..e]).into_owned())
+        .unwrap_or_default()
 }
 
 /// Game-owned global file: `.bak` of the pre-AWR original, atomic write, only if it changed.
@@ -350,6 +455,9 @@ mod tests {
             traffic: true,
             audio: true,
             created: "2026-10-23T00:00:00Z",
+            paintjobs: None,
+            parts: None,
+            ivfc: None,
         }
     }
 
@@ -437,6 +545,99 @@ mod tests {
         assert!(lines.starts_with(b"MYBIKE"));
         assert!(lines.windows(3).any(|w| w == b"\r\n!"), "special bike line");
         assert!(lines.ends_with(b"\r\n"));
+    }
+
+    #[test]
+    fn pack_parts_paintjobs_and_colors_are_renamed_to_the_car() {
+        if !have_game_fixtures() {
+            return;
+        }
+        let (d, info, refs) = install();
+        let r = d.path();
+        let put = |rel: &str, body: &[u8]| {
+            let p = r.join(rel);
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(p, body).unwrap();
+        };
+        put(
+            "data/carmods.dat",
+            b"uranus, exh_a_u, nto_b_l, wg_l_a_u
+",
+        );
+        put(
+            "data/maps/veh_mods/veh_mods.ide",
+            b"objs
+1090, wg_l_a_u, uranus, 100, 2097152
+1092, exh_a_u, uranus, 100, 2097152
+end
+",
+        );
+        for f in [
+            "src/parts/wg_l_a_u.dff",
+            "src/parts/exh_a_u.dff",
+            "src/pj/uranus1.txd",
+            "src/pj/uranus2.txd",
+            "src/pj/readme.txt",
+        ] {
+            put(f, b"x");
+        }
+        put(
+            "src/c.ivfc",
+            b"vehicle_id 558
+num_colors 1
+",
+        );
+        let inj = Injector {
+            info: &info,
+            refs: &refs,
+            id_floor: 12500,
+        };
+        let f = r.join("gta_sa.exe");
+        let key = inj
+            .inject_vehicle(&InjectVehicle {
+                parts: Some(&r.join("src/parts")),
+                paintjobs: Some(&r.join("src/pj")),
+                ivfc: Some(&r.join("src/c.ivfc")),
+                ..req("beetle", "uranus", &f)
+            })
+            .unwrap();
+        for f in [
+            "exh_a_u_beetle.dff",
+            "wg_l_a_u_beetle.dff",
+            "beetle1.txd",
+            "beetle2.txd",
+            "ImVehFt/colors/beetle.ivfc",
+        ] {
+            assert!(key.join(f).is_file(), "{f}");
+        }
+        assert!(!key.join("readme.txt").exists());
+        assert_eq!(
+            read(&key.join("ImVehFt/colors/beetle.ivfc")),
+            b"vehicle_id 12500
+num_colors 1
+"
+        );
+        let lines = String::from_utf8(read(&key.join("linhas.txt")))
+            .unwrap()
+            .lines()
+            .collect::<Vec<_>>()
+            .join("\n");
+        // car 12500, then parts in file-name order: exh_a_u 12501, wg_l_a_u 12502
+        assert!(
+            lines.contains(
+                "beetle, exh_a_u_beetle, nto_b_l, wg_l_a_u_beetle
+"
+            ),
+            "{lines}"
+        );
+        assert!(lines.contains("12501, exh_a_u_beetle, beetle, 100, 2097152"));
+        assert!(lines.contains("12502, wg_l_a_u_beetle, beetle, 100, 2097152"));
+        let meta = meta::read(&key).unwrap();
+        assert_eq!(meta.parts.len(), 2);
+
+        // the part IDs are taken: the next car skips them
+        let next = inj.inject_vehicle(&req("other", "landstal", &f)).unwrap();
+        assert!(next.ends_with("12503-other"));
     }
 
     #[test]

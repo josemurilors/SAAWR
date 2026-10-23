@@ -18,6 +18,7 @@ pub mod references;
 #[cfg(test)]
 mod testutil;
 pub mod text;
+pub mod tuning;
 pub mod validators;
 
 pub use error::{AwrError, Result};

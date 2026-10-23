@@ -32,6 +32,16 @@ pub fn check_short(short: &str, taken: impl Fn(&str) -> bool) -> Result<()> {
     Ok(())
 }
 
+/// IDE model names are limited to 23 characters.
+pub fn check_part_name(name: &str) -> Result<()> {
+    if name.len() > 23 {
+        return Err(AwrError::InvalidName(format!(
+            "'{name}': peça com nome longo demais (máx. 23); use um nome curto menor"
+        )));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

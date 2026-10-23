@@ -23,6 +23,13 @@ pub struct Files {
     pub fxt: Option<String>,
 }
 
+/// A renamed tuning part owned by the car (model name + its own model ID).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Part {
+    pub name: String,
+    pub id: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Meta {
     pub v: u32,
@@ -38,6 +45,8 @@ pub struct Meta {
     pub audio: Option<String>,
     pub created: String,
     pub files: Files,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parts: Vec<Part>,
 }
 
 /// UTC timestamp for `created`, from Unix seconds (civil-from-days, no date crate).
@@ -89,6 +98,7 @@ pub(crate) fn sample(id: u32, short: &str) -> Meta {
             txd: format!("{short}.txd"),
             fxt: None,
         },
+        parts: vec![],
     }
 }
 

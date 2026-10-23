@@ -11,7 +11,8 @@ use std::{path::PathBuf, process::ExitCode, time::SystemTime};
 const USAGE: &str = "uso: awr-cli <comando> [--gta <pasta do GTA SA>]
   status
   doctor
-  inject --name <nome> --dff <arq> --txd <arq> --ref <modelo, ex. landstal> [--short <nome curto>] [--no-traffic] [--no-audio]
+  inject --name <nome> --ref <modelo, ex. uranus> (--pack <pasta do mod> | --dff <arq> --txd <arq>)
+         [--paintjobs <pasta>] [--parts <pasta>] [--ivfc <arq>] [--short <nome curto>] [--no-traffic] [--no-audio]
   enable <pasta do mod>
   disable <pasta do mod>
   remove <pasta do mod>
@@ -68,24 +69,51 @@ fn run(args: &[String]) -> Result<(), String> {
     match cmd {
         "inject" => {
             let name = need(args, "--name")?;
+            let reference = need(args, "--ref")?;
             let short = opt(args, "--short")
                 .map(String::from)
                 .unwrap_or_else(|| validators::short_from(name));
             let secs = SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .map_or(0, |d| d.as_secs());
-            let dff = PathBuf::from(need(args, "--dff")?);
-            let txd = PathBuf::from(need(args, "--txd")?);
+            // --pack <folder> finds the car and its extras by the usual pack layout
+            let pack = opt(args, "--pack").map(PathBuf::from);
+            let find = |flag: &str, rel: String| {
+                opt(args, flag)
+                    .map(PathBuf::from)
+                    .or_else(|| pack.as_ref().map(|p| p.join(rel)).filter(|p| p.exists()))
+            };
+            let dff = find("--dff", format!("{reference}.dff")).ok_or("falta --dff ou --pack")?;
+            let txd = find("--txd", format!("{reference}.txd")).ok_or("falta --txd ou --pack")?;
+            let paintjobs = find("--paintjobs", "Paintjobs".into());
+            let parts = find("--parts", "Tuning Parts".into());
+            let ivfc = find("--ivfc", "IVF Colors/ImVehFt/colors".into()).and_then(|p| {
+                if p.is_dir() {
+                    std::fs::read_dir(p)
+                        .ok()?
+                        .flatten()
+                        .map(|e| e.path())
+                        .find(|f| {
+                            f.extension()
+                                .is_some_and(|e| e.eq_ignore_ascii_case("ivfc"))
+                        })
+                } else {
+                    Some(p)
+                }
+            });
             let key = inj
                 .inject_vehicle(&InjectVehicle {
                     name,
                     short: &short,
                     dff: &dff,
                     txd: &txd,
-                    reference: need(args, "--ref")?,
+                    reference,
                     traffic: !args.iter().any(|a| a == "--no-traffic"),
                     audio: !args.iter().any(|a| a == "--no-audio"),
                     created: &meta::rfc3339(secs),
+                    paintjobs: paintjobs.as_deref(),
+                    parts: parts.as_deref(),
+                    ivfc: ivfc.as_deref(),
                 })
                 .map_err(|e| e.to_string())?;
             println!("injetado: {}", key.display());
