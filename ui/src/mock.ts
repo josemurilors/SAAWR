@@ -32,6 +32,15 @@ let mods: ModDto[] = [
   mk({ key: "c4", id: 12519, name: "King Air C90B", short: "kingair", reference: "beagle", vehicleType: "plane" }),
   mk({ key: "w1", id: 12400, kind: "weapon", name: "luger", short: "luger", reference: "PISTOL", vehicleType: null, weaponTypeId: 70, traffic: "" }),
   mk({ key: "w2", id: 12402, kind: "weapon", name: "yardstick", short: "yardstick", reference: "DILDO1", vehicleType: null, weaponTypeId: 72, enabled: false, traffic: "" }),
+  mk({ key: "x0", id: 12403, kind: "weapon", name: "AUG", short: "aug", reference: "M4", vehicleType: null, weaponTypeId: 73, traffic: "" }),
+  mk({ key: "x1", id: 12404, kind: "weapon", name: "Granada", short: "granada", reference: "GRENADE", vehicleType: null, weaponTypeId: 74, traffic: "" }),
+  mk({ key: "x2", id: 12405, kind: "weapon", name: "Sniper", short: "sniper", reference: "SNIPERRIFLE", vehicleType: null, weaponTypeId: 75, traffic: "" }),
+  mk({ key: "x3", id: 12406, kind: "weapon", name: "Bazuca", short: "bazuca", reference: "RLAUNCHER", vehicleType: null, weaponTypeId: 76, traffic: "" }),
+  mk({ key: "x4", id: 12407, kind: "weapon", name: "Minigun2", short: "minigun2", reference: "MINIGUN", vehicleType: null, weaponTypeId: 77, traffic: "" }),
+  mk({ key: "x5", id: 12408, kind: "weapon", name: "Uzi", short: "uzi", reference: "MICRO_UZI", vehicleType: null, weaponTypeId: 78, traffic: "" }),
+  mk({ key: "x6", id: 12409, kind: "weapon", name: "Pump", short: "pump", reference: "SHOTGUN", vehicleType: null, weaponTypeId: 79, traffic: "" }),
+  mk({ key: "x7", id: 12410, kind: "weapon", name: "Tinta", short: "tinta", reference: "SPRAYCAN", vehicleType: null, weaponTypeId: 80, traffic: "" }),
+  mk({ key: "x8", id: 12411, kind: "weapon", name: "Pack", short: "pack", reference: "JETPACK", vehicleType: null, weaponTypeId: 81, traffic: "" }),
   mk({ key: "f1", id: 12500, foreign: true, kind: null, name: "12500-spike1", vehicleType: null, traffic: "" }),
 ];
 
@@ -66,6 +75,13 @@ export const mockApi: Api = {
     return sample();
   },
   forgetItems: async () => {},
+  suggestShort: async (_id, name, weapon) => {
+    const folded = name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    const clean = folded.replace(/[^a-z0-9]/g, "");
+    return weapon ? folded.split(/[^a-z0-9]+/).filter(Boolean).join("_").slice(0, 15) : clean.slice(0, 7);
+  },
+  hudName: async (name) =>
+    name.replace(/~[^~]*~?/g, "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9 .'()&/+-]/g, " ").replace(/\s+/g, " ").trim().slice(0, 24),
   validate: async (checks) =>
     checks.map((c) => ({
       id: c.id,

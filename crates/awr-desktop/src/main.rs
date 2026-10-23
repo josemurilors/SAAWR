@@ -7,14 +7,14 @@ use awr_core::{
     cargrp::{self, Group},
     checker::{self, Severity},
     config::AppSettings,
-    fsutil,
+    fsutil, ide,
     injector::{InjectVehicle, Injector, Traffic},
     inventory::{self, InstalledMod},
     meta::{self, ModKind},
     paths::{self, InstallInfo},
     references::{self, VehicleRef},
     validators,
-    weapons::{self, InjectWeapon, WeaponRef},
+    weapons::{self, InjectWeapon, Special, WeaponRef},
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -177,6 +177,8 @@ struct InjectRequest {
     audio: bool,
     use_handling: bool,
     use_cleo: bool,
+    /// Weapons: "silencer", "jetpack" or "binoculars".
+    special: Option<String>,
 }
 
 // ---- helpers --------------------------------------------------------------------------
@@ -421,6 +423,41 @@ async fn scan_paths(
         .collect())
 }
 
+/// A free short for `name`, ignoring the queue item `id` itself (so editing a name does not
+/// collide with the name it already had).
+#[tauri::command]
+async fn suggest_short(
+    id: Option<u64>,
+    name: String,
+    weapon: bool,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let game = state.game.lock().unwrap();
+    let Some(g) = game.as_ref() else {
+        return Ok(String::new());
+    };
+    let settings = state.settings.lock().unwrap();
+    let mut taken = injector(g, &settings).taken_shorts();
+    let queue = state.queue.lock().unwrap();
+    taken.extend(
+        queue
+            .iter()
+            .filter(|(k, _)| Some(**k) != id)
+            .map(|(_, c)| c.short.clone()),
+    );
+    Ok(if weapon {
+        batch::suggest_weapon_name(&name, &taken)
+    } else {
+        batch::suggest_short(&name, &taken)
+    })
+}
+
+/// How the name will read in the game (the HUD font has no accents and a few reserved symbols).
+#[tauri::command]
+async fn hud_name(name: String) -> Result<String, String> {
+    Ok(ide::hud_name(&name))
+}
+
 #[tauri::command]
 async fn forget_items(ids: Vec<u64>, state: State<'_, AppState>) -> Result<(), String> {
     let mut queue = state.queue.lock().unwrap();
@@ -502,6 +539,7 @@ async fn inject(
                 reference: &r.reference,
                 created: &created,
                 own: c.files.weapon.as_ref().filter(|_| r.use_handling),
+                special: Special::parse(r.special.as_deref().unwrap_or_default()),
             })
         } else {
             let traffic = match (r.traffic.kind.as_str(), r.traffic.index) {
@@ -586,6 +624,8 @@ fn main() {
             open_game,
             scan_paths,
             forget_items,
+            suggest_short,
+            hud_name,
             validate,
             inject,
             set_enabled,

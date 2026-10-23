@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Copy, KIND_LABEL, KindIcon, Trash, kindOf, type Kind } from "./Icons";
+import { Copy, FAMILY_LABEL, KindIcon, Trash, WEAPON_CLASS_LABEL, familyOf, kindOf, weaponClass, type Family } from "./Icons";
 import type { ModDto } from "./types";
 
 interface Props {
@@ -9,17 +9,17 @@ interface Props {
   onCopy: (text: string) => void;
 }
 
-const KINDS: Kind[] = ["car", "bike", "boat", "plane", "weapon"];
+const FAMILIES: Family[] = ["car", "bike", "boat", "plane", "weapon"];
 
 export function InstalledView({ mods, onToggle, onRemove, onCopy }: Props) {
   const [text, setText] = useState("");
-  const [kind, setKind] = useState<Kind | null>(null);
+  const [kind, setKind] = useState<Family | null>(null);
   const [confirm, setConfirm] = useState<string | null>(null);
 
   const shown = useMemo(() => {
     const t = text.trim().toLowerCase();
     return mods.filter((m) => {
-      const k = kindOf(m.vehicleType, m.kind === "weapon");
+      const k = familyOf(kindOf(m.vehicleType, m.kind === "weapon", m.reference));
       const kindOk = !kind || (!m.foreign && k === kind);
       return kindOk && (!t || m.name.toLowerCase().includes(t));
     });
@@ -35,9 +35,9 @@ export function InstalledView({ mods, onToggle, onRemove, onCopy }: Props) {
           <button className={kind === null ? "on" : ""} onClick={() => setKind(null)}>
             Todos
           </button>
-          {KINDS.map((k) => (
+          {FAMILIES.map((k) => (
             <button key={k} className={kind === k ? "on" : ""} onClick={() => setKind(k)}>
-              {KIND_LABEL[k]}
+              {FAMILY_LABEL[k]}
             </button>
           ))}
         </div>
@@ -80,7 +80,7 @@ function ModCard({ m, confirming, setConfirm, onToggle, onRemove, onCopy }: Card
   return (
     <div className={`card ${m.enabled ? "" : "off"}`}>
       <div className={`glyph ${m.enabled ? "" : "dim"}`}>
-        <KindIcon kind={kindOf(m.vehicleType, weapon)} />
+        <KindIcon kind={kindOf(m.vehicleType, weapon, m.reference)} />
       </div>
       <div className="body">
         <div className="line">
@@ -101,6 +101,7 @@ function ModCard({ m, confirming, setConfirm, onToggle, onRemove, onCopy }: Card
                 <Copy />
               </button>
             </span>
+            <span className="chip">{WEAPON_CLASS_LABEL[weaponClass(m.reference)]}</span>
             <span className="meta">use o tipo, não o ID do modelo ({m.id}), em trainers</span>
           </div>
         ) : (

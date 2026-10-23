@@ -12,6 +12,8 @@ export interface Api {
   openGame(path: string): Promise<Snapshot>;
   scanPaths(paths: string[]): Promise<ItemDto[]>;
   forgetItems(ids: number[]): Promise<void>;
+  suggestShort(id: number | null, name: string, weapon: boolean): Promise<string>;
+  hudName(name: string): Promise<string>;
   validate(checks: Check[]): Promise<Problem[]>;
   inject(requests: InjectRequest[]): Promise<InjectResult[]>;
   setEnabled(key: string, enabled: boolean): Promise<string>;
@@ -25,6 +27,8 @@ const real: Api = {
   openGame: (path) => invoke("open_game", { path }),
   scanPaths: (paths) => invoke("scan_paths", { paths }),
   forgetItems: (ids) => invoke("forget_items", { ids }),
+  suggestShort: (id, name, weapon) => invoke("suggest_short", { id, name, weapon }),
+  hudName: (name) => invoke("hud_name", { name }),
   validate: (checks) => invoke("validate", { checks }),
   inject: (requests) => invoke("inject", { requests }),
   setEnabled: (key, enabled) => invoke("set_enabled", { key, enabled }),

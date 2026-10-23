@@ -69,6 +69,8 @@ O SA-AWR automatiza o método "adicionar sem substituir" dos tutoriais MixMods. 
 - **Lote:** uma pasta com subpastas vira uma fila; o nome vem da pasta e a referência do nome do `.dff` (`sanchez.dff` sugere `sanchez`).
 - **Checker:** bloqueia a injeção sem ModLoader, FLA ou OLA e avisa de `cargrp.dat` duplicado, limites do OLA ativos no `.ini` e jogo aberto.
 - **Armas:** pasta própria em `modloader/awr-weapons` com o `.ide`, o `Loader.txt` (linhas de `weapon.dat` e `object.dat` clonadas da arma de referência) e, no FLA, a linha do `gtasa_weapon_config.dat` com um tipo de arma novo (a partir de 70). As texturas de HUD (`*icon`, `*crosshair`) do `.txd` são renomeadas para a nova arma.
+- **Nome no jogo:** o HUD não tem acentos nem aceita `~` (códigos de cor), então o nome é ajustado para ASCII seguro (até 24 caracteres) e a interface mostra como vai aparecer. O nome curto é sugerido a partir do nome, sem repetir nenhum já usado.
+- **Armas especiais:** pistola com silenciador, jetpack e binóculos (este último experimental, sem teste no jogo). Cada tipo de arma tem seu ícone (corpo a corpo, pistola, submetralhadora, escopeta, fuzil, sniper, lançador, arremesso, arma pesada, spray e equipamento).
 - **CLI** (`status`, `doctor`, `groups`, `weapons`, `inject`, `inject-weapon`, `batch`, `enable`, `disable`, `remove`, `repair`) e **interface** (Tauri + React) com abas Importar/Instalados.
 
 ## 2. Princípios
@@ -184,7 +186,7 @@ Sem as fixtures do jogo (como na CI), os testes que dependem delas avisam "pulad
 
 ## 9. Limites de escopo e evolução
 
-**Dentro:** carros, motos, barcos, aeronaves e armas novos via ModLoader, com peças de tuning, paintjobs e cores IVF do pacote (renomeadas para o carro). **Fora:** edição de handling campo a campo, múltiplos perfis do ModLoader, Android, telemetria e rede. **Pendências conhecidas:** armas especiais (silenciador, jetpack, binóculos, lançadores já herdam as linhas associadas); usar as linhas de arma do readme do pacote (hoje clona a referência); usar o carcols que o pacote traz no readme (o handling já é usado); áudio "silencioso" (carro sem linha de áudio testado no jogo e funciona); scripts CLEO de pacotes; redesenho visual da interface. **Evoluções possíveis:** importação de mods de terceiros e interface em inglês.
+**Dentro:** carros, motos, barcos, aeronaves e armas novos via ModLoader, com peças de tuning, paintjobs e cores IVF do pacote (renomeadas para o carro). **Fora:** edição de handling campo a campo, múltiplos perfis do ModLoader, Android, telemetria e rede. **Pendências conhecidas:** testar no jogo os binóculos e o jetpack; usar as linhas de arma do readme do pacote (hoje clona a referência); usar o carcols que o pacote traz no readme (o handling já é usado); áudio "silencioso" (carro sem linha de áudio testado no jogo e funciona); scripts CLEO de pacotes; redesenho visual da interface. **Evoluções possíveis:** importação de mods de terceiros e interface em inglês.
 
 ## 10. Documentação complementar
 

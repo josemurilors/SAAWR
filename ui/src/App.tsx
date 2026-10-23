@@ -10,6 +10,8 @@ interface Toast { id: number; text: string; bad: boolean }
 
 const toQueueItem = (i: ItemDto): QItem => ({
   ...i,
+  shortEdited: false,
+  special: "none",
   include: true,
   traffic: { kind: "auto" },
   audio: true,
@@ -93,6 +95,16 @@ export function App() {
   }, [queue, snap]);
 
   const patch = (id: number, p: Partial<QItem>) => setQueue((q) => q.map((i) => (i.id === id ? { ...i, ...p } : i)));
+  // changing the in-game name suggests a new short, until the user types one himself
+  const rename = (id: number, name: string) => {
+    patch(id, { name });
+    const item = queue.find((i) => i.id === id);
+    if (!item || item.shortEdited) return;
+    api
+      .suggestShort(id, name, item.weapon)
+      .then((short) => short && setQueue((q) => q.map((i) => (i.id === id && !i.shortEdited ? { ...i, short } : i))))
+      .catch(() => {});
+  };
   const removeItem = (id: number) => {
     api.forgetItems([id]);
     setQueue((q) => q.filter((i) => i.id !== id));
@@ -119,6 +131,7 @@ export function App() {
         todo.map((i) => ({
           id: i.id, name: i.name, short: i.short, reference: i.reference, weapon: i.weapon,
           traffic: i.traffic, audio: i.audio, useHandling: i.useHandling, useCleo: i.useCleo,
+          special: i.weapon && i.special !== "none" ? i.special : null,
         })),
       );
       const ok = results.filter((r) => r.ok).map((r) => r.id);
@@ -168,6 +181,7 @@ export function App() {
             dragging={dragging}
             onAddPaths={addPaths}
             onPatch={patch}
+            onRename={rename}
             onRemove={removeItem}
             onClear={clearQueue}
             onInject={inject}

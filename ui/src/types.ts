@@ -55,7 +55,11 @@ export interface ItemDto {
 export type TrafficKind = "auto" | "none" | "group";
 export interface TrafficChoice { kind: TrafficKind; index?: number }
 /** A queue item with what the user can change on it. */
+export type Special = "none" | "silencer" | "jetpack" | "binoculars";
 export interface QItem extends ItemDto {
+  /** The user typed the short himself: stop suggesting it from the name. */
+  shortEdited: boolean;
+  special: Special;
   include: boolean;
   traffic: TrafficChoice;
   audio: boolean;
@@ -72,6 +76,7 @@ export interface InjectRequest {
   audio: boolean;
   useHandling: boolean;
   useCleo: boolean;
+  special: Special | null;
 }
 export interface InjectResult { id: number; ok: boolean; message: string }
 export interface Problem { id: number; problem: string | null }

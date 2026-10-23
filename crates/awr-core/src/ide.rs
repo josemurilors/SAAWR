@@ -49,10 +49,20 @@ pub fn fxt_line(short: &str, name: &str) -> Vec<u8> {
 pub const HUD_NAME_MAX: usize = 24;
 
 /// What the game can show: the font has no accents of its own for ModLoader's `.fxt`, `~`
-/// opens color/control codes and other symbols print as boxes. So: accents folded to ASCII,
+/// opens color/control codes (`~r~` is dropped whole) and other symbols print as boxes. So: accents folded to ASCII,
 /// only letters, digits, space and `. ' ( ) & / + -` kept, spaces collapsed, cut at 24.
 pub fn hud_name(name: &str) -> String {
-    let kept: String = crate::text::fold_ascii(name)
+    // `~r~` and friends are control codes: drop them whole, not just the tildes
+    let mut plain = String::new();
+    let mut in_code = false;
+    for c in name.chars() {
+        match (c, in_code) {
+            ('~', _) => in_code = !in_code,
+            (_, false) => plain.push(c),
+            _ => {}
+        }
+    }
+    let kept: String = crate::text::fold_ascii(&plain)
         .chars()
         .map(|c| {
             if c.is_ascii_alphanumeric() || " .'()&/+-".contains(c) {
@@ -109,6 +119,6 @@ mod tests {
         );
         assert_eq!(fxt_line("gtr34", "GT R34 Ação"), b"GTR34 GT R34 Acao");
         assert_eq!(fxt_line("x", "~~~"), b"X X");
-        assert_eq!(fxt_line("x", "~r~Red"), b"X r Red");
+        assert_eq!(fxt_line("x", "~r~Red"), b"X Red");
     }
 }

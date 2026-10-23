@@ -1,7 +1,8 @@
+import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { inTauri } from "./api";
-import { Close, Folder, KindIcon, Upload, kindOf } from "./Icons";
-import type { GameDto, QItem, TrafficChoice } from "./types";
+import { api, inTauri } from "./api";
+import { Close, Folder, KindIcon, Upload, WEAPON_CLASS_LABEL, kindOf, weaponClass } from "./Icons";
+import type { GameDto, QItem, Special, TrafficChoice } from "./types";
 
 interface Props {
   game: GameDto | null;
@@ -11,6 +12,7 @@ interface Props {
   dragging: boolean;
   onAddPaths: (paths: string[]) => void;
   onPatch: (id: number, patch: Partial<QItem>) => void;
+  onRename: (id: number, name: string) => void;
   onRemove: (id: number) => void;
   onClear: () => void;
   onInject: () => void;
@@ -18,6 +20,29 @@ interface Props {
 }
 
 const asList = (r: string | string[] | null): string[] => (r === null ? [] : Array.isArray(r) ? r : [r]);
+
+const SPECIALS: { value: Special; label: string; hint: string }[] = [
+  { value: "none", label: "Normal", hint: "" },
+  { value: "silencer", label: "Pistola com silenciador", hint: "Herda o comportamento da PISTOL_SILENCED." },
+  { value: "jetpack", label: "Jetpack", hint: "Clona o JETPACK (referência trocada sozinha)." },
+  { value: "binoculars", label: "Binóculos (experimental)", hint: "Usa NIGHTVISION como base e liga a visão em primeira pessoa. Ainda não testado no jogo." },
+];
+
+/** How the in-game name will read: the HUD font has no accents and a few reserved symbols. */
+function HudPreview({ name }: { name: string }) {
+  const [hud, setHud] = useState(name);
+  useEffect(() => {
+    const h = setTimeout(() => api.hudName(name).then(setHud).catch(() => {}), 150);
+    return () => clearTimeout(h);
+  }, [name]);
+  const changed = hud !== name.trim().replace(/\s+/g, " ");
+  return (
+    <div className="meta">
+      No jogo aparece: <strong style={{ color: "var(--text)" }}>{hud || "(vazio)"}</strong>
+      {changed && " · acentos, símbolos ou tamanho foram ajustados para o jogo"}
+    </div>
+  );
+}
 
 function trafficValue(t: TrafficChoice): string {
   return t.kind === "group" ? `group:${t.index}` : t.kind;
@@ -88,10 +113,12 @@ export function ImportView(p: Props) {
 
 function QueueCard({ item, game, problem, p }: { item: QItem; game: GameDto | null; problem: string | null; p: Props }) {
   const patch = (x: Partial<QItem>) => p.onPatch(item.id, x);
-  const kind = kindOf(
-    game?.refs.find((r) => r.model === item.reference)?.kind,
-    item.weapon,
-  );
+  const kind = kindOf(game?.refs.find((r) => r.model === item.reference)?.kind, item.weapon, item.reference);
+  const setSpecial = (special: Special) => {
+    const forced = special === "jetpack" ? "JETPACK" : special === "binoculars" ? "NIGHTVISION" : null;
+    const ok = forced && game?.weapons.some((w) => w.name === forced);
+    patch({ special, ...(ok ? { reference: forced! } : {}) });
+  };
   const showProblem = item.include && problem;
 
   return (
@@ -104,17 +131,27 @@ function QueueCard({ item, game, problem, p }: { item: QItem; game: GameDto | nu
           <input type="checkbox" checked={item.include} onChange={(e) => patch({ include: e.target.checked })} />
           <label className="fl">
             Nome
-            <input type="text" value={item.name} onChange={(e) => patch({ name: e.target.value })} style={{ minWidth: 230 }} />
+            <input type="text" value={item.name} onChange={(e) => p.onRename(item.id, e.target.value)} style={{ minWidth: 230 }} />
           </label>
           <label className="fl">
             Nome curto
-            <input type="text" value={item.short} onChange={(e) => patch({ short: e.target.value.toLowerCase() })} style={{ minWidth: 120 }} />
+            <input
+              type="text"
+              value={item.short}
+              onChange={(e) => {
+                const short = e.target.value.toLowerCase();
+                patch({ short, shortEdited: short !== "" });
+              }}
+              style={{ minWidth: 120 }}
+            />
           </label>
           <div className="spacer" />
           <button className="btn ghost small" title="Tirar da fila" onClick={() => p.onRemove(item.id)}>
             <Close />
           </button>
         </div>
+
+        <HudPreview name={item.name} />
 
         <div className="line">
           <div className="seg">
@@ -142,6 +179,18 @@ function QueueCard({ item, game, problem, p }: { item: QItem; game: GameDto | nu
                   ))}
             </select>
           </label>
+          {item.weapon && (
+            <label className="fl">
+              Tipo especial
+              <select value={item.special} onChange={(e) => setSpecial(e.target.value as Special)}>
+                {SPECIALS.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           {!item.weapon && (
             <label className="fl">
               Tráfego
@@ -157,6 +206,10 @@ function QueueCard({ item, game, problem, p }: { item: QItem; game: GameDto | nu
             </label>
           )}
         </div>
+
+        {item.weapon && SPECIALS.find((s) => s.value === item.special)?.hint && (
+          <div className="meta">{SPECIALS.find((s) => s.value === item.special)?.hint}</div>
+        )}
 
         <div className="opts">
           {!item.weapon && item.extras.handling && (
@@ -190,7 +243,10 @@ function QueueCard({ item, game, problem, p }: { item: QItem; game: GameDto | nu
         ) : (
           <div className="pills">
             {item.weapon ? (
-              <span className="chip">arma · o ícone do HUD é renomeado sozinho</span>
+              <>
+                <span className="chip gold">{WEAPON_CLASS_LABEL[weaponClass(item.reference)]}</span>
+                <span className="chip">o ícone do HUD é renomeado sozinho</span>
+              </>
             ) : (
               <>
                 {item.extras.parts && <span className="chip gold">tuning</span>}
