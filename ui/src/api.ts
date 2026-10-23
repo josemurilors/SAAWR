@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
-  Check, InjectRequest, InjectResult, ItemDto, Problem, Snapshot,
+  Check, InjectRequest, InjectResult, ItemDto, Problem, Snapshot, TrafficChoice,
 } from "./types";
 import { mockApi } from "./mock";
 
@@ -18,6 +18,7 @@ export interface Api {
   inject(requests: InjectRequest[]): Promise<InjectResult[]>;
   setEnabled(key: string, enabled: boolean): Promise<string>;
   remove(key: string): Promise<string>;
+  editMod(key: string, name: string, traffic: TrafficChoice | null, audio: boolean | null): Promise<string>;
   repair(): Promise<string>;
 }
 
@@ -33,6 +34,7 @@ const real: Api = {
   inject: (requests) => invoke("inject", { requests }),
   setEnabled: (key, enabled) => invoke("set_enabled", { key, enabled }),
   remove: (key) => invoke("remove", { key }),
+  editMod: (key, name, traffic, audio) => invoke("edit_mod", { key, name, traffic, audio }),
   repair: () => invoke("repair"),
 };
 

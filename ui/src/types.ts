@@ -28,6 +28,9 @@ export interface ModDto {
   ivfc: boolean;
   packHandling: boolean;
   traffic: string;
+  /** The traffic setting for the editor: "auto", "none" or "group:N". */
+  trafficChoice: string;
+  audio: boolean;
 }
 export interface Snapshot {
   gtaPath: string;

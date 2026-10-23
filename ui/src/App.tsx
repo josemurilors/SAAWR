@@ -4,7 +4,7 @@ import { api, errorText, inTauri } from "./api";
 import { ImportView } from "./ImportView";
 import { InstalledView } from "./InstalledView";
 import { TopBar, type Tab } from "./TopBar";
-import type { ItemDto, ModDto, QItem, Snapshot } from "./types";
+import type { ItemDto, ModDto, QItem, Snapshot, TrafficChoice } from "./types";
 
 interface Toast { id: number; text: string; bad: boolean }
 
@@ -158,6 +158,17 @@ export function App() {
     await refresh();
   };
 
+  const onEdit = async (m: ModDto, name: string, traffic: TrafficChoice | null, audio: boolean | null) => {
+    try {
+      await api.editMod(m.key, name, traffic, audio);
+      say(`${name}: alterações salvas`);
+      await refresh();
+      return true;
+    } catch (e) {
+      say(errorText(e), true);
+      return false;
+    }
+  };
   const onToggle = (m: ModDto) => run(() => api.setEnabled(m.key, !m.enabled), `${m.name}: ${m.enabled ? "desligado" : "ligado"}`);
   const onRemove = (m: ModDto) => run(() => api.remove(m.key), `${m.name} removido`);
   const onRepair = () => run(() => api.repair(), "Instalação reparada");
@@ -188,7 +199,7 @@ export function App() {
             onMockDrop={() => addPaths(["mock"])}
           />
         ) : (
-          <InstalledView mods={snap?.mods ?? []} onToggle={onToggle} onRemove={onRemove} onCopy={onCopy} />
+          <InstalledView mods={snap?.mods ?? []} game={snap?.game ?? null} onToggle={onToggle} onRemove={onRemove} onCopy={onCopy} onEdit={onEdit} />
         )}
       </main>
       <footer className="footer">

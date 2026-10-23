@@ -22,7 +22,7 @@ const groups = ["workers", "business", "clubbers", "farmers", "beachfolk", "casu
 const mk = (m: Partial<ModDto>): ModDto => ({
   key: "", id: null, enabled: true, foreign: false, kind: "vehicle", name: "", short: "",
   reference: "", vehicleType: "car", weaponTypeId: null, parts: 0, paintjobs: 0, ivfc: false,
-  packHandling: false, traffic: "como a referência", ...m,
+  packHandling: false, traffic: "como a referência", trafficChoice: "auto", audio: true, ...m,
 });
 
 let mods: ModDto[] = [
@@ -95,6 +95,17 @@ export const mockApi: Api = {
     await delay(150);
     mods = mods.map((m) => (m.key === key ? { ...m, enabled } : m));
     return key;
+  },
+  editMod: async (key, name, traffic, audio) => {
+    await delay(150);
+    mods = mods.map((m) =>
+      m.key === key
+        ? { ...m, name, audio: audio ?? m.audio,
+            trafficChoice: traffic ? (traffic.kind === "group" ? `group:${traffic.index}` : traffic.kind) : m.trafficChoice,
+            traffic: traffic ? (traffic.kind === "none" ? "sem tráfego" : traffic.kind === "auto" ? "como a referência" : `grupo ${traffic.index}`) : m.traffic }
+        : m,
+    );
+    return "salvo";
   },
   remove: async (key) => {
     await delay(150);

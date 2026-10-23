@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { inTauri } from "./api";
-import { Folder, Mark, Wrench } from "./Icons";
+import { Folder, Wrench } from "./Icons";
 import type { Snapshot } from "./types";
 
 export type Tab = "import" | "installed";
@@ -48,36 +48,36 @@ export function TopBar({ tab, onTab, snap, onOpenGame, onRepair }: Props) {
 
   return (
     <header className="topbar" ref={ref}>
-      <div className="brand">
-        <Mark />
-        SA-AWR
-      </div>
+      <span className="plate" title="SA-AWR: adicionar sem substituir">
+        <span className="top">adicionar sem substituir</span>
+        <span className="num" style={{ fontSize: 20 }}>SA-AWR</span>
+      </span>
       <nav className="tabs">
         <button className={`tab ${tab === "import" ? "active" : ""}`} onClick={() => onTab("import")}>
           Importar
         </button>
         <button className={`tab ${tab === "installed" ? "active" : ""}`} onClick={() => onTab("installed")}>
-          Instalados ({snap?.mods.length ?? 0})
+          Instalados<span className="count">{snap?.mods.length ?? 0}</span>
         </button>
       </nav>
       <div className="spacer" />
       <button className="status-btn" onClick={() => setMenu((m) => !m)}>
         <span className={`dot ${level}`} />
-        {game ? "GTA SA" : "Abrir o GTA SA"}
+        {game ? "GTA SA" : "Escolher o GTA SA"}
       </button>
 
       {menu && (
         <div className="popover">
-          <h4>Pasta do jogo</h4>
+          <h4>Onde está o GTA San Andreas?</h4>
           <div className="row">
             <input
-              className="field"
+              className="field-input"
               value={path}
               placeholder="D:\Games\GTA San Andreas"
               onChange={(e) => setPath(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && onOpenGame(path)}
             />
-            <button className="btn" onClick={browse} title="Procurar">
+            <button className="btn" onClick={browse} title="Escolher a pasta">
               <Folder />
             </button>
             <button className="btn primary" onClick={() => onOpenGame(path)}>
@@ -86,7 +86,7 @@ export function TopBar({ tab, onTab, snap, onOpenGame, onRepair }: Props) {
           </div>
           {game && (
             <>
-              <div className="check-list">
+              <div className="chips">
                 {chip("ModLoader", game.modloader)}
                 {chip("fastman92", game.fla)}
                 {chip("OLA", game.ola)}

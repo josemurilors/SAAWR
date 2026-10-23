@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { api, inTauri } from "./api";
+import { inTauri } from "./api";
 import { Close, Folder, KindIcon, Upload, WEAPON_CLASS_LABEL, kindOf, weaponClass } from "./Icons";
+import { HudPreview } from "./Plate";
 import type { GameDto, QItem, Special, TrafficChoice } from "./types";
 
 interface Props {
@@ -24,30 +24,14 @@ const asList = (r: string | string[] | null): string[] => (r === null ? [] : Arr
 const SPECIALS: { value: Special; label: string; hint: string }[] = [
   { value: "none", label: "Normal", hint: "" },
   { value: "silencer", label: "Pistola com silenciador", hint: "Herda o comportamento da PISTOL_SILENCED." },
-  { value: "jetpack", label: "Jetpack", hint: "Clona o JETPACK (referência trocada sozinha)." },
-  { value: "binoculars", label: "Binóculos (experimental)", hint: "Usa NIGHTVISION como base e liga a visão em primeira pessoa. Ainda não testado no jogo." },
+  { value: "jetpack", label: "Jetpack", hint: "Clona o JETPACK (a referência muda sozinha)." },
+  { value: "binoculars", label: "Binóculos (experimental)", hint: "Usa NIGHTVISION como base e liga a visão em primeira pessoa. Ainda não foi testado no jogo." },
 ];
 
-/** How the in-game name will read: the HUD font has no accents and a few reserved symbols. */
-function HudPreview({ name }: { name: string }) {
-  const [hud, setHud] = useState(name);
-  useEffect(() => {
-    const h = setTimeout(() => api.hudName(name).then(setHud).catch(() => {}), 150);
-    return () => clearTimeout(h);
-  }, [name]);
-  const changed = hud !== name.trim().replace(/\s+/g, " ");
-  return (
-    <div className="meta">
-      No jogo aparece: <strong style={{ color: "var(--text)" }}>{hud || "(vazio)"}</strong>
-      {changed && " · acentos, símbolos ou tamanho foram ajustados para o jogo"}
-    </div>
-  );
-}
-
-function trafficValue(t: TrafficChoice): string {
+export function trafficValue(t: TrafficChoice): string {
   return t.kind === "group" ? `group:${t.index}` : t.kind;
 }
-function parseTraffic(v: string): TrafficChoice {
+export function parseTraffic(v: string): TrafficChoice {
   if (v.startsWith("group:")) return { kind: "group", index: Number(v.slice(6)) };
   return { kind: v === "none" ? "none" : "auto" };
 }
@@ -65,44 +49,46 @@ export function ImportView(p: Props) {
   };
 
   const ready = p.queue.filter((i) => i.include && !p.problems[i.id]).length;
+  const hasQueue = p.queue.length > 0;
 
   return (
     <div className="page">
       <h2>Importar</h2>
-      <div className="sub">Solte a pasta de um mod, uma pasta com vários, ou os arquivos .dff e .txd.</div>
+      <div className="sub">Solte a pasta de um mod, uma pasta com vários, ou os arquivos .dff e .txd. O nome vem da pasta e a referência vem do nome do .dff.</div>
 
-      <div className={`dropzone ${p.dragging ? "over" : ""}`}>
+      <div className={`dropzone ${hasQueue ? "compact" : ""} ${p.dragging ? "over" : ""}`}>
         <Upload className="hero" />
-        <div className="big">Arraste aqui</div>
-        <div className="hint">O nome vem da pasta e a referência vem do nome do .dff.</div>
+        <div className="big">{hasQueue ? "Solte mais mods aqui" : "Arraste a pasta do mod para cá"}</div>
+        {hasQueue ? <div className="hint" /> : <div className="hint">Funciona com a pasta de um mod, com uma pasta de vários, ou com .dff + .txd soltos.</div>}
         <div className="row" style={{ justifyContent: "center" }}>
           <button className="btn" onClick={pickFolders}>
-            <Folder /> Procurar pasta
+            <Folder /> Escolher pasta
           </button>
           <button className="btn" onClick={pickFiles}>
-            Procurar arquivos
+            Escolher arquivos
           </button>
         </div>
       </div>
 
-      {p.queue.length > 0 && (
+      {hasQueue && (
         <>
-          <div className="row" style={{ margin: "20px 0 -4px", justifyContent: "space-between" }}>
-            <strong>
-              Fila ({p.queue.length}) <span className="meta" style={{ fontWeight: 400, color: "var(--muted)" }}>· {ready} pronto(s)</span>
-            </strong>
-            <button className="btn ghost small" onClick={p.onClear}>
+          <div className="listhead">
+            <h3>Fila</h3>
+            <span className="meta">
+              {p.queue.length} item(ns) · {ready} pronto(s) para injetar
+            </span>
+            <button className="btn quiet small" onClick={p.onClear}>
               Limpar fila
             </button>
           </div>
           <div className="queue">
             {p.queue.map((item) => (
-              <QueueCard key={item.id} item={item} game={p.game} problem={p.problems[item.id] ?? null} p={p} />
+              <QueueRow key={item.id} item={item} game={p.game} problem={p.problems[item.id] ?? null} p={p} />
             ))}
           </div>
           <div className="actionbar">
             <button className="btn primary" disabled={ready === 0 || p.busy} onClick={p.onInject}>
-              {p.busy ? "Injetando…" : `INJETAR ${ready} NO JOGO`}
+              {p.busy ? "Injetando…" : `Injetar ${ready} no jogo`}
             </button>
           </div>
         </>
@@ -111,7 +97,7 @@ export function ImportView(p: Props) {
   );
 }
 
-function QueueCard({ item, game, problem, p }: { item: QItem; game: GameDto | null; problem: string | null; p: Props }) {
+function QueueRow({ item, game, problem, p }: { item: QItem; game: GameDto | null; problem: string | null; p: Props }) {
   const patch = (x: Partial<QItem>) => p.onPatch(item.id, x);
   const kind = kindOf(game?.refs.find((r) => r.model === item.reference)?.kind, item.weapon, item.reference);
   const setSpecial = (special: Special) => {
@@ -120,18 +106,19 @@ function QueueCard({ item, game, problem, p }: { item: QItem; game: GameDto | nu
     patch({ special, ...(ok ? { reference: forced! } : {}) });
   };
   const showProblem = item.include && problem;
+  const hint = SPECIALS.find((s) => s.value === item.special)?.hint;
 
   return (
-    <div className={`card ${item.include ? "" : "off"} ${showProblem ? "bad" : ""}`}>
+    <div className={`qrow ${item.include ? "" : "off"} ${showProblem ? "bad" : ""}`}>
       <div className={`glyph ${item.include ? "" : "dim"}`}>
         <KindIcon kind={kind} />
       </div>
-      <div className="body">
+      <div className="qbody">
         <div className="line">
-          <input type="checkbox" checked={item.include} onChange={(e) => patch({ include: e.target.checked })} />
+          <input type="checkbox" checked={item.include} onChange={(e) => patch({ include: e.target.checked })} aria-label="Injetar este item" style={{ marginBottom: 9 }} />
           <label className="fl">
-            Nome
-            <input type="text" value={item.name} onChange={(e) => p.onRename(item.id, e.target.value)} style={{ minWidth: 230 }} />
+            Nome no jogo
+            <input type="text" value={item.name} onChange={(e) => p.onRename(item.id, e.target.value)} style={{ minWidth: 260 }} />
           </label>
           <label className="fl">
             Nome curto
@@ -142,19 +129,18 @@ function QueueCard({ item, game, problem, p }: { item: QItem; game: GameDto | nu
                 const short = e.target.value.toLowerCase();
                 patch({ short, shortEdited: short !== "" });
               }}
-              style={{ minWidth: 120 }}
+              style={{ minWidth: 130 }}
             />
           </label>
           <div className="spacer" />
-          <button className="btn ghost small" title="Tirar da fila" onClick={() => p.onRemove(item.id)}>
+          <button className="btn quiet small" title="Tirar da fila" onClick={() => p.onRemove(item.id)}>
             <Close />
           </button>
         </div>
-
         <HudPreview name={item.name} />
 
         <div className="line">
-          <div className="seg">
+          <div className="seg" role="group" aria-label="Tipo">
             <button className={!item.weapon ? "on" : ""} onClick={() => item.weapon && patch({ weapon: false, reference: "" })}>
               Veículo
             </button>
@@ -163,7 +149,7 @@ function QueueCard({ item, game, problem, p }: { item: QItem; game: GameDto | nu
             </button>
           </div>
           <label className="fl">
-            Referência
+            Baseado em
             <select value={item.reference} onChange={(e) => patch({ reference: e.target.value })}>
               <option value="">escolha…</option>
               {item.weapon
@@ -179,9 +165,9 @@ function QueueCard({ item, game, problem, p }: { item: QItem; game: GameDto | nu
                   ))}
             </select>
           </label>
-          {item.weapon && (
+          {item.weapon ? (
             <label className="fl">
-              Tipo especial
+              Comportamento especial
               <select value={item.special} onChange={(e) => setSpecial(e.target.value as Special)}>
                 {SPECIALS.map((s) => (
                   <option key={s.value} value={s.value}>
@@ -190,13 +176,12 @@ function QueueCard({ item, game, problem, p }: { item: QItem; game: GameDto | nu
                 ))}
               </select>
             </label>
-          )}
-          {!item.weapon && (
+          ) : (
             <label className="fl">
-              Tráfego
+              Aparece no tráfego
               <select value={trafficValue(item.traffic)} onChange={(e) => patch({ traffic: parseTraffic(e.target.value) })}>
-                <option value="auto">como a referência</option>
-                <option value="none">nenhum</option>
+                <option value="auto">como o veículo de referência</option>
+                <option value="none">em nenhum grupo</option>
                 {game?.groups.map((g) => (
                   <option key={g.index} value={`group:${g.index}`}>
                     {g.label}
@@ -206,10 +191,7 @@ function QueueCard({ item, game, problem, p }: { item: QItem; game: GameDto | nu
             </label>
           )}
         </div>
-
-        {item.weapon && SPECIALS.find((s) => s.value === item.special)?.hint && (
-          <div className="meta">{SPECIALS.find((s) => s.value === item.special)?.hint}</div>
-        )}
+        {item.weapon && hint && <div className="meta">{hint}</div>}
 
         <div className="opts">
           {!item.weapon && item.extras.handling && (
@@ -233,7 +215,7 @@ function QueueCard({ item, game, problem, p }: { item: QItem; game: GameDto | nu
           {!item.weapon && (
             <label>
               <input type="checkbox" checked={item.audio} onChange={(e) => patch({ audio: e.target.checked })} />
-              Clonar o áudio
+              Clonar o som do motor
             </label>
           )}
         </div>
@@ -241,21 +223,23 @@ function QueueCard({ item, game, problem, p }: { item: QItem; game: GameDto | nu
         {showProblem ? (
           <div className="problem">{problem}</div>
         ) : (
-          <div className="pills">
+          <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
             {item.weapon ? (
               <>
-                <span className="chip gold">{WEAPON_CLASS_LABEL[weaponClass(item.reference)]}</span>
+                <span className="chip accent">{WEAPON_CLASS_LABEL[weaponClass(item.reference)]}</span>
                 <span className="chip">o ícone do HUD é renomeado sozinho</span>
               </>
             ) : (
               <>
-                {item.extras.parts && <span className="chip gold">tuning</span>}
-                {item.extras.paintjobs && <span className="chip gold">paintjobs</span>}
-                {item.extras.ivfc && <span className="chip gold">cores IVF</span>}
+                {item.extras.parts && <span className="chip accent">peças de tuning</span>}
+                {item.extras.paintjobs && <span className="chip accent">paintjobs</span>}
+                {item.extras.ivfc && <span className="chip accent">cores IVF</span>}
                 {!item.extras.parts && !item.extras.paintjobs && !item.extras.ivfc && <span className="chip">só modelo e textura</span>}
               </>
             )}
-            <span className="chip" title={item.folder}>{item.folder.split(/[\\/]/).pop()}</span>
+            <span className="chip" title={item.folder}>
+              {item.folder.split(/[\\/]/).pop()}
+            </span>
           </div>
         )}
       </div>
