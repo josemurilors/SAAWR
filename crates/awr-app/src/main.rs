@@ -113,7 +113,15 @@ impl Item {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Tab {
+    Import,
+    Installed,
+}
+
 struct App {
+    tab: Tab,
+    show_log: bool,
     settings: AppSettings,
     gta_text: String,
     game: Option<Game>,
@@ -129,6 +137,8 @@ impl App {
     fn new() -> Self {
         let settings = AppSettings::load();
         let mut app = App {
+            tab: Tab::Import,
+            show_log: false,
             gta_text: settings
                 .gta_path
                 .as_ref()
@@ -462,47 +472,79 @@ impl App {
         });
     }
 
-    fn footer(&mut self, ui: &mut egui::Ui) {
+    /// Title, the two tabs, and the GTA SA menu (path, health, repair).
+    fn top_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.label("GTA SA:");
-            let w = ui.available_width() - 150.0;
-            ui.add(egui::TextEdit::singleline(&mut self.gta_text).desired_width(w));
-            if ui.button("Abrir").clicked() {
-                self.open_game();
-            }
-            if ui.button("...").clicked() {
-                if let Some(p) = rfd::FileDialog::new().pick_folder() {
-                    self.gta_text = p.display().to_string();
+            ui.label(RichText::new("SA-AWR").heading().strong().color(GOLD));
+            ui.add_space(16.0);
+            let installed = format!("Instalados ({})", self.mods.len());
+            ui.selectable_value(&mut self.tab, Tab::Import, "Importar");
+            ui.selectable_value(&mut self.tab, Tab::Installed, installed);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                self.game_menu(ui);
+            });
+        });
+    }
+
+    fn game_menu(&mut self, ui: &mut egui::Ui) {
+        let errors = checker::has_errors(&self.findings);
+        let (dot, color) = match (self.game.is_some(), errors, self.findings.is_empty()) {
+            (false, _, _) | (_, true, _) => ("●", BAD),
+            (_, _, false) => ("●", GOLD),
+            _ => ("●", Color32::from_rgb(0x6B, 0xBF, 0x59)),
+        };
+        ui.menu_button(RichText::new(format!("{dot} GTA SA")).color(color), |ui| {
+            ui.set_min_width(420.0);
+            ui.label("Pasta do jogo");
+            ui.horizontal(|ui| {
+                let w = ui.available_width() - 110.0;
+                ui.add(egui::TextEdit::singleline(&mut self.gta_text).desired_width(w));
+                if ui.button("...").clicked() {
+                    if let Some(p) = rfd::FileDialog::new().pick_folder() {
+                        self.gta_text = p.display().to_string();
+                        self.open_game();
+                    }
+                }
+                if ui.button("Abrir").clicked() {
                     self.open_game();
+                }
+            });
+            if let Some(g) = &self.game {
+                ui.separator();
+                for (name, ok) in [
+                    ("ModLoader", g.info.modloader.is_some()),
+                    ("fastman92 (FLA)", g.info.fla_ini().is_some()),
+                    ("Open Limit Adjuster", g.info.ola_asi.is_some()),
+                ] {
+                    let (txt, c) = if ok { ("ok", GOLD) } else { ("falta", BAD) };
+                    ui.label(RichText::new(format!("{name}: {txt}")).color(c));
+                }
+                for f in &self.findings {
+                    let (tag, c) = match f.severity {
+                        Severity::Error => ("ERRO", BAD),
+                        Severity::Warn => ("aviso", GOLD),
+                    };
+                    ui.label(RichText::new(format!("{tag}: {}", f.msg)).color(c));
+                }
+                ui.separator();
+                if ui.button("Reparar instalação").clicked() {
+                    self.act(|i| i.repair().map(|n| format!("reparado ({n} limpas)")));
                 }
             }
         });
-        if self.game.is_some() {
-            if self.findings.is_empty() {
-                ui.label(RichText::new("Instalação OK").color(GOLD));
-            }
-            for f in &self.findings {
-                let (tag, c) = match f.severity {
-                    Severity::Error => ("ERRO", BAD),
-                    Severity::Warn => ("aviso", GOLD),
-                };
-                ui.label(RichText::new(format!("{tag}: {}", f.msg)).color(c));
-            }
-            if ui.small_button("Reparar instalação").clicked() {
-                self.act(|i| i.repair().map(|n| format!("reparado ({n} limpas)")));
-            }
-        }
-        if let Some(last) = self.log.last() {
-            ui.label(RichText::new(last).color(MUTED));
-        }
-        egui::CollapsingHeader::new("Log").show(ui, |ui| {
-            egui::ScrollArea::vertical()
-                .max_height(120.0)
-                .show(ui, |ui| {
-                    for l in self.log.iter().rev() {
-                        ui.label(RichText::new(l).small().color(MUTED));
-                    }
-                });
+    }
+
+    /// One thin line: what happened last, and a button for the full log.
+    fn footer(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            let last = self.log.last().map_or("pronto", String::as_str);
+            let c = if last.starts_with("erro") { BAD } else { MUTED };
+            ui.label(RichText::new(last).small().color(c));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.small_button("Log").clicked() {
+                    self.show_log = !self.show_log;
+                }
+            });
         });
     }
 }
@@ -582,14 +624,27 @@ impl eframe::App for App {
             (files, !i.raw.hovered_files.is_empty())
         });
         if !dropped.is_empty() {
+            self.tab = Tab::Import;
             self.add_paths(dropped);
         }
+        egui::Panel::top("bar").show(ui, |ui| self.top_bar(ui));
         egui::Panel::bottom("footer").show(ui, |ui| self.footer(ui));
-        egui::Panel::left("form")
-            .resizable(false)
-            .exact_size(500.0)
-            .show(ui, |ui| self.left(ui));
-        egui::CentralPanel::default().show(ui, |ui| self.right(ui));
+        egui::CentralPanel::default().show(ui, |ui| match self.tab {
+            Tab::Import => self.left(ui),
+            Tab::Installed => self.right(ui),
+        });
+        let mut open = self.show_log;
+        egui::Window::new("Log")
+            .open(&mut open)
+            .default_size([520.0, 260.0])
+            .show(ui.ctx(), |ui| {
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    for l in self.log.iter().rev() {
+                        ui.label(RichText::new(l).small().color(MUTED));
+                    }
+                });
+            });
+        self.show_log = open;
         if hovering {
             let rect = ui.max_rect();
             let p = ui.painter();
