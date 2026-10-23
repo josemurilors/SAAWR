@@ -95,13 +95,12 @@ fn other_cargrps(modloader: &Path) -> Vec<std::path::PathBuf> {
         .collect()
 }
 
-/// Windows refuses write access to a running executable.
-/// shortcut: a read-only gta_sa.exe also reads as "running"; upgrade if it shows up.
+/// Windows refuses write access to a running executable. A read-only exe refuses it
+/// too, so that case cannot tell and counts as "not running".
 pub fn game_running(root: &Path) -> bool {
-    fs::OpenOptions::new()
-        .write(true)
-        .open(root.join("gta_sa.exe"))
-        .is_err()
+    let exe = root.join("gta_sa.exe");
+    let readonly = fs::metadata(&exe).is_ok_and(|m| m.permissions().readonly());
+    !readonly && fs::OpenOptions::new().write(true).open(exe).is_err()
 }
 
 #[cfg(test)]
@@ -122,6 +121,20 @@ mod tests {
         touch(&fla.join(crate::paths::FLA_INI), ini);
         touch(&r.join("modloader/OLA/III.VC.SA.LimitAdjuster.asi"), b"");
         detect_install(r).unwrap()
+    }
+
+    #[test]
+    #[allow(clippy::permissions_set_readonly_false)] // Windows-only app; lets the temp dir clean up
+    fn read_only_exe_is_not_mistaken_for_a_running_game() {
+        let d = tempfile::tempdir().unwrap();
+        let exe = d.path().join("gta_sa.exe");
+        touch(&exe, b"");
+        let mut perm = fs::metadata(&exe).unwrap().permissions();
+        perm.set_readonly(true);
+        fs::set_permissions(&exe, perm.clone()).unwrap();
+        assert!(!game_running(d.path()));
+        perm.set_readonly(false);
+        fs::set_permissions(&exe, perm).unwrap();
     }
 
     #[test]

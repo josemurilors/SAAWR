@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/josemurilors/SAAWR/actions/workflows/ci.yml"><img src="https://github.com/josemurilors/SAAWR/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <img src="https://img.shields.io/badge/status-Fase_1_concluida-green" alt="Status">
+  <img src="https://img.shields.io/badge/status-ve%C3%ADculos_prontos-green" alt="Status">
   <img src="https://img.shields.io/badge/stack-Rust-orange" alt="Stack">
   <img src="https://img.shields.io/badge/jogo-GTA_SA_1.0_US-blue" alt="Jogo">
   <img src="https://img.shields.io/badge/licen%C3%A7a-MIT-green" alt="Licença">
@@ -17,11 +17,11 @@
 | | |
 | --- | --- |
 | **Versão** | 0.1.0 (v2, reescrita do zero) |
-| **Estado** | Fase 1 concluída (veículos: carro, moto, barco e avião testados no jogo); interface e armas pendentes |
+| **Estado** | Veículos prontos e testados no jogo (carro, moto, barco e avião), com CLI e interface; armas pendentes |
 | **Contexto** | Projeto pessoal; segue os tutoriais MixMods de carros e armas sem substituir |
 | **Alvo** | Windows, GTA SA 1.0 US com ModLoader + fastman92 Limit Adjuster + Open Limit Adjuster |
 
-> **Ainda não instala mods.** Hoje só a CLI `status` existe: ela detecta a instalação e lista o inventário, sem escrever nada no jogo. Teste sempre numa cópia da pasta do jogo.
+> **Ele escreve no jogo.** Injetar, ligar/desligar e remover mexem em arquivos da pasta `modloader` e do FLA (com `.bak` do original). Use sempre uma cópia da pasta do jogo enquanto o projeto é jovem.
 
 ## Sumário
 
@@ -45,6 +45,7 @@ git clone https://github.com/josemurilors/SAAWR.git && cd SAAWR
 scripts/fixtures.sh "/d/Games/GTA San Andreas"   # fixtures do jogo, só locais
 cargo test --all
 cargo run -p awr-cli -- status --gta "D:\Games\GTA San Andreas"
+cargo run -p awr-app                              # interface: solte a pasta do mod na janela
 ```
 
 ## 1. Objetivo
@@ -60,10 +61,16 @@ O SA-AWR automatiza o método "adicionar sem substituir" dos tutoriais MixMods. 
 - Sync do `.ini` do FLA byte a byte, com teste golden contra o `.ini` oficial.
 - 212 veículos de referência lidos dos arquivos originais do jogo.
 - Alocação de IDs, clonagem das linhas de handling/IDE/carcols/fxt, cargrp e áudio.
+- **Injeção de veículos** (carro, moto, barco, avião): pasta própria em `modloader/awr-cars`, injeção atômica, ligar/desligar, remover e reparar sem resíduo.
+- **Pacote completo:** peças de tuning (renomeadas `{peça}_{short}`, com IDs próprios e linhas `carmods`/IDE), paintjobs (`{ref}N.txd` vira `{short}N.txd`) e cores do ImVehFt (`vehicle_id` trocado).
+- **Tráfego à escolha:** como a referência, nenhum, ou um dos grupos do `cargrp.dat`.
+- **Lote:** uma pasta com subpastas vira uma fila; o nome vem da pasta e a referência do nome do `.dff` (`sanchez.dff` sugere `sanchez`).
+- **Checker:** bloqueia a injeção sem ModLoader, FLA ou OLA e avisa de `cargrp.dat` duplicado, limites do OLA ativos no `.ini` e jogo aberto.
+- **CLI** (`status`, `doctor`, `groups`, `inject`, `batch`, `enable`, `disable`, `remove`, `repair`) e **interface egui** com abas Importar/Instalados.
 
 ## 2. Princípios
 
-1. **100% Rust:** interface nativa (egui na Fase 2), sem WebView.
+1. **100% Rust:** interface nativa em egui, sem WebView.
 2. **Disco como fonte da verdade:** cada mod tem um `meta.json`; o inventário é refeito por varredura, sem banco paralelo.
 3. **Bytes, não strings:** arquivos do jogo são CRLF + Windows-1252; a ferramenta troca só os tokens que precisa e preserva o resto byte a byte.
 4. **Core sem GUI:** `awr-core` é testável sozinho; a CLI e a interface usam o mesmo core.
@@ -73,19 +80,20 @@ O SA-AWR automatiza o método "adicionar sem substituir" dos tutoriais MixMods. 
 ```mermaid
 flowchart LR
     CLI["awr-cli"] --> CORE["awr-core"]
-    APP["awr-app (Fase 2)"] -.-> CORE
+    APP["awr-app (egui)"] --> CORE
     CORE --> GAME["data/ do jogo (só leitura)"]
     CORE --> ML["modloader/awr-cars, awr-weapons"]
     CORE --> FLA["FLA: .ini, áudio, weapon_config"]
 ```
 
-**Leitura:** `paths` detecta a instalação, `references` lê os veículos originais e `inventory` lista os mods. **Escrita** (injector, pendente): monta a pasta em staging, edita os arquivos globais com `.bak` e promove a pasta com um rename.
+**Leitura:** `paths` detecta a instalação, `references` lê os veículos originais e `inventory` lista os mods. **Escrita** (`injector`): monta a pasta em `modloader/. awr-staging`, edita os arquivos globais (áudio e `.ini` do FLA, com `.bak`; tráfego numa cópia do `cargrp.dat` em `awr-transito`) e promove a pasta com um rename. Uma queda no meio deixa só linhas órfãs e o staging, que o `repair` limpa.
 
 ### Stack
 
 | Área | Escolha | Papel |
 | --- | --- | --- |
-| Linguagem | Rust (edição 2021) | Core e CLI |
+| Linguagem | Rust (edição 2021) | Core, CLI e interface |
+| Interface | `eframe`/`egui` + `rfd` | Janela única, drag-and-drop e seletor de pastas |
 | Encoding | `encoding_rs` | Windows-1252 dos arquivos do jogo |
 | Erros | `thiserror` | `AwrError` por domínio |
 | Estado | `serde` + `serde_json` | `meta.json` e configuração |
@@ -98,8 +106,9 @@ flowchart LR
 ```text
 SAAWR/
 ├── crates/
-│   ├── awr-core/src/   # lógica: fla, references, ids, handling, ide, cargrp, audio, inventory…
-│   └── awr-cli/src/    # binário `awr-cli status`
+│   ├── awr-core/src/   # lógica: injector, checker, batch, pack, tuning, fla, references, ids…
+│   ├── awr-cli/src/    # binário `awr-cli`
+│   └── awr-app/src/    # interface egui (`awr-app`)
 ├── fixtures/           # poisoned_cp1252.ini versionado; arquivos do jogo só locais
 ├── scripts/fixtures.sh # copia as fixtures da sua instalação do GTA SA
 ├── docs/               # escopo (spec) e plano de desenvolvimento
@@ -112,6 +121,7 @@ SAAWR/
 - **`Vehicle Models` e `Weapon Models` nunca são tocadas** e ficam com `#`, como mandam os tutoriais: "Se você usa Open Limit Adjuster, NÃO EDITE ESTA LINHA!".
 - As chaves que os tutoriais mandam editar perdem o `#` e recebem o valor calculado. Todas as outras ficam idênticas.
 - Os limites só crescem. `Count of killable model IDs` = maior ID + 16, arredondado para cima a múltiplo de 50. As contagens respeitam os pisos do tutorial (standard lines ≥ 300).
+- **Confirmado no jogo:** só o OLA não basta para o handling (o `handling.cfg` original já usa as 210 linhas e o carro novo nasce voando), então o sync liga `Apply handling.cfg patch`. Já `Apply ID limit patch` e `Enable model special feature loader` **não são geridos**: o special feature loader derrubou o jogo junto do OLA.
 - IDs: carros a partir de 12500; armas de 12400 a 12499; o menor ID livre vence; mods desativados mantêm o ID reservado.
 
 ## 6. Integridade dos arquivos do jogo
@@ -121,7 +131,7 @@ SAAWR/
 - **Arquivos originais em `data\`** são só lidos.
 - **Golden tests** comparam `Vec<u8>`, então mudanças de CRLF ou de encoding fazem o teste falhar.
 
-Os testes não substituem o teste no jogo: o formato de pasta do ModLoader ainda precisa ser confirmado no jogo (passo 1.0 do [plano](docs/PLANO.md)).
+Os testes não substituem o teste no jogo. O formato de pasta do ModLoader, o handling, o áudio clonado, as peças de tuning, as paintjobs e o tráfego foram confirmados no jogo numa cópia da instalação (spike do [plano](docs/PLANO.md)).
 
 ## 7. Desenvolvimento e execução local
 
@@ -134,7 +144,11 @@ Os testes não substituem o teste no jogo: o formato de pasta do ModLoader ainda
 
 1. Gere as fixtures locais: `scripts/fixtures.sh "/d/Games/GTA San Andreas"`.
 2. Rode os testes: `cargo test --all`.
-3. Veja o diagnóstico da sua instalação: `cargo run -p awr-cli -- status --gta "D:\Games\GTA San Andreas"`.
+3. Veja o diagnóstico da sua instalação: `cargo run -p awr-cli -- doctor --gta "D:\Games\GTA San Andreas"`.
+4. Abra a interface com `cargo run -p awr-app`, informe a pasta do jogo no menu "GTA SA" e solte a pasta do mod na janela.
+5. Ou use a CLI: `awr-cli inject --name "VW New Beetle" --ref uranus --pack "<pasta do mod>" --gta "<jogo>"` (ou `batch <pasta>` para vários; sem `--yes` só simula).
+
+Carros de packs com recursos do ImVehFt/VehFuncs (rodas variáveis, luzes) precisam desses plugins instalados no jogo.
 
 ### Testes
 
@@ -151,20 +165,22 @@ Sem as fixtures do jogo (como na CI), os testes que dependem delas avisam "pulad
 - [x] Fase 0: `awr-cli status` detecta ModLoader, FLA e OLA numa instalação real.
 - [x] Sync do FLA byte a byte, sem tocar nas chaves do OLA.
 - [x] Referências, IDs, clonagem de linhas, cargrp e áudio com testes contra os arquivos reais.
-- [ ] Teste no jogo do formato de pasta do ModLoader: aguarda o teste manual.
-- [ ] Injector (injetar, desativar, remover, reparar) + `awr-cli inject/remove`: depende do teste acima.
-- [x] Fase 1: 4 veículos reais injetados e removidos numa cópia do jogo, sem resíduo.
-- [ ] Fase 2: interface egui de tela única.
+- [x] Teste no jogo do formato de pasta do ModLoader (carro, moto, barco e avião).
+- [x] Injector (injetar, desativar, remover, reparar) + CLI.
+- [x] Fase 1: 4 veículos reais injetados e removidos numa cópia do jogo, sem resíduo; `data\` idêntico ao original.
+- [x] Pacote com peças de tuning, paintjobs e cores IVF funcionando no jogo.
+- [x] Fase 2: interface egui (importar, lote, tráfego, inventário, health). O visual definitivo fica para depois.
 - [ ] Fase 3: armas. Fase 4: release `.exe` portable.
 
 ## 9. Limites de escopo e evolução
 
-**Dentro:** carros, motos, barcos, aeronaves e armas novos via ModLoader, com peças de tuning, paintjobs e cores IVF do pacote (renomeadas para o carro). **Fora:** edição de handling campo a campo, múltiplos perfis do ModLoader, Android, telemetria e rede. **Evoluções possíveis:** importação de mods de terceiros e interface em inglês.
+**Dentro:** carros, motos, barcos, aeronaves e armas novos via ModLoader, com peças de tuning, paintjobs e cores IVF do pacote (renomeadas para o carro). **Fora:** edição de handling campo a campo, múltiplos perfis do ModLoader, Android, telemetria e rede. **Pendências conhecidas:** armas; usar o handling/carcols que o pacote traz no readme (hoje clona a referência); áudio "silencioso" (hoje sem áudio clonado não foi testado no jogo); scripts CLEO de pacotes; redesenho visual da interface. **Evoluções possíveis:** importação de mods de terceiros e interface em inglês.
 
 ## 10. Documentação complementar
 
 - [docs/ESCOPO.md](docs/ESCOPO.md): especificação completa (arquitetura, formatos de arquivo, contrato da API, fontes).
-- [docs/PLANO.md](docs/PLANO.md): plano de desenvolvimento por fases.
+- [docs/PLANO.md](docs/PLANO.md): plano de desenvolvimento por fases, com o resultado do spike no jogo.
+- [docs/UI.md](docs/UI.md): plano de redesign da interface.
 - Tutoriais seguidos: [carros](https://www.mixmods.com.br/2020/02/tutorial-adicionar-carros-sem-substituir/) e [armas](https://www.mixmods.com.br/2019/02/tutorial-adicionar-armas-sem-substituir/) sem substituir (MixMods).
 
 ## 11. Autor e licença

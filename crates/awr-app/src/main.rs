@@ -126,6 +126,8 @@ struct App {
     gta_text: String,
     game: Option<Game>,
     mods: Vec<Row>,
+    /// Shorts that cannot be reused; refreshed with the inventory, not every frame.
+    taken: BTreeSet<String>,
     filter_text: String,
     filter_kind: Option<Kind>,
     findings: Vec<Finding>,
@@ -149,6 +151,7 @@ impl App {
             settings,
             game: None,
             mods: vec![],
+            taken: BTreeSet::new(),
             filter_text: String::new(),
             filter_kind: None,
             findings: vec![],
@@ -211,6 +214,10 @@ impl App {
                 .collect();
             self.findings = checker::check(&g.info);
         }
+        self.taken = self
+            .injector()
+            .map(|i| i.taken_shorts())
+            .unwrap_or_default();
     }
 
     fn injector(&self) -> Option<Injector<'_>> {
@@ -348,10 +355,7 @@ impl App {
         });
         ui.separator();
 
-        let taken = self
-            .injector()
-            .map(|i| i.taken_shorts())
-            .unwrap_or_default();
+        let taken = self.taken.clone();
         let mut shorts: BTreeMap<String, usize> = BTreeMap::new();
         for i in self.queue.iter().filter(|i| i.include) {
             *shorts.entry(i.short.clone()).or_default() += 1;
