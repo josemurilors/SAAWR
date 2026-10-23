@@ -68,6 +68,8 @@ pub struct InjectVehicle<'a> {
     pub ivfc: Option<&'a Path>,
     /// The pack author's handling lines, used instead of a copy of the reference's.
     pub handling: Option<&'a FoundHandling>,
+    /// `CLEO` folder whose files are copied into the mod's own `cleo/` folder.
+    pub cleo: Option<&'a Path>,
 }
 
 /// Files of a vehicle pack beyond the car itself, already renamed.
@@ -165,6 +167,16 @@ impl Injector<'_> {
             io_at(&dir, fs::create_dir_all(&dir))?;
             let bytes = tuning::retarget_ivfc(&fsutil::read(src)?, id);
             fsutil::write_atomic(&dir.join(format!("{}.ivfc", req.short)), &bytes)?;
+        }
+        if let Some(dir) = req.cleo {
+            let to = stage.join("cleo");
+            io_at(&to, fs::create_dir_all(&to))?;
+            for e in io_at(dir, fs::read_dir(dir))?
+                .flatten()
+                .filter(|e| e.path().is_file())
+            {
+                io_at(&e.path(), fs::copy(e.path(), to.join(e.file_name())))?;
+            }
         }
         let eol = b"\r\n";
         let fxt = [&ide::fxt_line(req.short, req.name)[..], eol].concat();
@@ -536,6 +548,7 @@ mod tests {
             parts: None,
             ivfc: None,
             handling: None,
+            cleo: None,
         }
     }
 

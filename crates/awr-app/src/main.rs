@@ -87,6 +87,8 @@ struct Item {
     audio: bool,
     /// Use the handling the pack ships (when it has one) instead of copying the reference.
     use_handling: bool,
+    /// Copy the pack's CLEO scripts too (off by default: they may not suit the new ID).
+    use_cleo: bool,
     /// A weapon instead of a vehicle: `reference` is then a `weapon.dat` name.
     weapon: bool,
     include: bool,
@@ -104,6 +106,7 @@ impl Item {
             traffic: Traffic::Auto,
             audio: true,
             use_handling: true,
+            use_cleo: false,
             include: true,
         }
     }
@@ -344,6 +347,7 @@ impl App {
                             parts: item.files.parts.as_deref(),
                             ivfc: item.files.ivfc.as_deref(),
                             handling: item.files.handling.as_ref().filter(|_| item.use_handling),
+                            cleo: item.files.cleo.as_deref().filter(|_| item.use_cleo),
                         });
                         match &res {
                             Ok(k) => logs.push(format!("injetado: {}", k.display())),
@@ -471,6 +475,12 @@ impl App {
                             ui.checkbox(
                                 &mut item.use_handling,
                                 "Usar as linhas de arma do pacote (readme)",
+                            );
+                        }
+                        if !item.weapon && item.files.cleo.is_some() {
+                            ui.checkbox(
+                                &mut item.use_cleo,
+                                "Copiar os scripts CLEO do pacote (pode não servir para o novo ID)",
                             );
                         }
                         if !item.weapon && item.files.handling.is_some() {

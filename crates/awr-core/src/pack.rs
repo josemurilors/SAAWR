@@ -15,6 +15,8 @@ pub struct PackFiles {
     pub handling: Option<FoundHandling>,
     /// Weapon lines the pack ships in its readme, if any.
     pub weapon: Option<FoundWeapon>,
+    /// A `CLEO` folder with scripts (planes often ship one); copying it is opt-in.
+    pub cleo: Option<PathBuf>,
 }
 
 /// Files of `dir` (not recursive) with the given extension, sorted.
@@ -62,6 +64,7 @@ pub fn discover(dir: &Path, reference: &str) -> PackFiles {
     PackFiles {
         handling: readme::find_handling(dir, &stem),
         weapon: readme::find_weapon(dir),
+        cleo: sub_dir(dir, "cleo").filter(|d| !with_ext(d, "cs").is_empty()),
         dff,
         txd: pick(dir, reference, "txd"),
         paintjobs: sub_dir(dir, "Paintjobs"),
@@ -89,6 +92,7 @@ mod tests {
             "Paintjobs/uranus1.txd",
             "Tuning Parts/exh_a_u.dff",
             "IVF Colors/ImVehFt/colors/vw.ivfc",
+            "CLEO/script.cs",
         ] {
             touch(r.join(f));
         }
@@ -98,6 +102,7 @@ mod tests {
         assert_eq!(p.paintjobs, Some(r.join("Paintjobs")));
         assert_eq!(p.parts, Some(r.join("Tuning Parts")));
         assert_eq!(p.ivfc, Some(r.join("IVF Colors/ImVehFt/colors/vw.ivfc")));
+        assert_eq!(p.cleo, Some(r.join("CLEO")));
     }
 
     #[test]
@@ -107,6 +112,9 @@ mod tests {
         touch(d.path().join("bmw.txd"));
         let p = discover(d.path(), "sanchez");
         assert_eq!(p.dff, Some(d.path().join("bmw.dff")));
-        assert_eq!((p.paintjobs, p.parts, p.ivfc), (None, None, None));
+        assert_eq!(
+            (p.paintjobs, p.parts, p.ivfc, p.cleo),
+            (None, None, None, None)
+        );
     }
 }

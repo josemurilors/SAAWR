@@ -75,7 +75,15 @@ pub fn parse_weapons(ide: &[u8], dat: &[u8], objects: &[u8], config: &[u8]) -> V
         }
     }
     let mut out: Vec<WeaponRef> = vec![];
-    for l in lines(dat).filter(|l| dat_head(l).is_some()) {
+    // the jetpack ships commented out in weapon.dat and in the config; the tutorial turns it on
+    let dat_lines: Vec<&[u8]> = lines(dat)
+        .map(|l| match l.strip_prefix(b"#") {
+            Some(rest) if tok(rest, 1) == Some(b"JETPACK") => rest,
+            _ => l,
+        })
+        .filter(|l| dat_head(l).is_some())
+        .collect();
+    for l in dat_lines {
         let (melee, name, model_id) = dat_head(l).expect("filtered above");
         if let Some(w) = out.iter_mut().find(|w| w.name == name) {
             w.dat_lines.push(l.to_vec());
@@ -88,8 +96,15 @@ pub fn parse_weapons(ide: &[u8], dat: &[u8], objects: &[u8], config: &[u8]) -> V
             continue;
         };
         let model = text(tok(ide_line, 1).unwrap_or_default());
-        let config_line = lines(config)
-            .find(|c| !c.starts_with(b"#") && tok(c, 1).is_some_and(|n| n == name.as_bytes()));
+        let config_line = lines(config).find_map(|c| {
+            let c = match c.strip_prefix(b"#") {
+                Some(rest) if name == "JETPACK" => rest,
+                _ => c,
+            };
+            let named = tok(c, 1).is_some_and(|n| n == name.as_bytes());
+            let numbered = tok(c, 0).is_some_and(|t| t.iter().all(u8::is_ascii_digit));
+            (named && numbered).then_some(c)
+        });
         let Some(config_line) = config_line else {
             continue;
         };
@@ -246,8 +261,14 @@ pub fn config_lines(
             let t = tokens(line);
             let mut edits: Vec<((usize, usize), &[u8])> =
                 vec![(t[0], id.as_bytes()), (t[1], name.as_bytes())];
-            if let Some(&parent) = t.get(10) {
+            // a parent like JETPACK_TYPE is what makes the weapon work: keep it
+            let typed = t
+                .get(10)
+                .is_some_and(|&(s, e)| line[s..e].ends_with(b"_TYPE"));
+            if let Some(&parent) = t.get(10).filter(|_| !typed) {
                 edits.push((parent, r.name.as_bytes()));
+                replace_spans(line, &edits)
+            } else if typed {
                 replace_spans(line, &edits)
             } else {
                 [&replace_spans(line, &edits)[..], b" ", r.name.as_bytes()].concat()
@@ -517,6 +538,38 @@ mod tests {
         assert_eq!((d.model.as_str(), d.model_id), ("desert_eagle", 348));
         assert!(d.object_line.is_some() && r[0].object_line.is_none());
         assert_eq!(d.associated.len(), 1);
+    }
+
+    #[test]
+    fn the_jetpack_is_cloneable_from_its_commented_lines() {
+        let ide = [
+            IDE,
+            &b"weap
+370, jetpack, jetpack, null, 1, 100, 0
+end
+"[..],
+        ]
+        .concat();
+        let dat = [DAT, &b"#$ JETPACK		USE	25.0 25.0	370	-1	9	null	1	 0	0.0   0.0   0.13    1  0	1.0	 1.0 	 0 10  3  	 0 10  3  99	0
+"[..]].concat();
+        let cfg = [
+            CFG,
+            &b"#70    JETPACK    -1  1  0  0  69 69 69 1.0   JETPACK_TYPE
+"[..],
+        ]
+        .concat();
+        let r = parse_weapons(&ide, &dat, OBJ, &cfg);
+        let jet = r
+            .iter()
+            .find(|w| w.name == "JETPACK")
+            .expect("jetpack parsed");
+        assert_eq!(jet.model_id, 370);
+        let lines = config_lines(jet, None, "MYPACK", 80);
+        assert!(lines[0].starts_with(b"80    MYPACK"));
+        assert!(
+            lines[0].ends_with(b"JETPACK_TYPE"),
+            "keeps the *_TYPE parent"
+        );
     }
 
     #[test]

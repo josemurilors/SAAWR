@@ -14,7 +14,7 @@ const USAGE: &str = "uso: awr-cli <comando> [--gta <pasta do GTA SA>]
   status
   doctor
   inject --name <nome> --ref <modelo, ex. uranus> (--pack <pasta do mod> | --dff <arq> --txd <arq>)
-         [--paintjobs <pasta>] [--parts <pasta>] [--ivfc <arq>] [--short <nome curto>] [--traffic auto|none|<n° do grupo>] [--no-audio] [--no-pack-handling]
+         [--paintjobs <pasta>] [--parts <pasta>] [--ivfc <arq>] [--short <nome curto>] [--traffic auto|none|<n° do grupo>] [--no-audio] [--no-pack-handling] [--cleo]
   groups
   weapons
   inject-weapon --short <nome> --ref <ARMA, ex. DESERT_EAGLE> (--pack <pasta> | --dff <arq> --txd <arq>) [--no-pack-lines]
@@ -105,6 +105,7 @@ fn run(args: &[String]) -> Result<(), String> {
             let paintjobs = flag("--paintjobs").or(found.paintjobs);
             let parts = flag("--parts").or(found.parts);
             let ivfc = flag("--ivfc").or(found.ivfc);
+            let found_cleo = found.cleo;
             let no_pack_handling = args.iter().any(|a| a == "--no-pack-handling");
             let own = found.handling.filter(|_| !no_pack_handling);
             let key = inj
@@ -121,6 +122,9 @@ fn run(args: &[String]) -> Result<(), String> {
                     parts: parts.as_deref(),
                     ivfc: ivfc.as_deref(),
                     handling: own.as_ref(),
+                    cleo: found_cleo
+                        .as_deref()
+                        .filter(|_| args.iter().any(|a| a == "--cleo")),
                 })
                 .map_err(|e| e.to_string())?;
             println!("injetado: {}", key.display());
@@ -159,6 +163,7 @@ fn run(args: &[String]) -> Result<(), String> {
                     parts: c.files.parts.as_deref(),
                     ivfc: c.files.ivfc.as_deref(),
                     handling: c.files.handling.as_ref().filter(|_| !yes_own_off),
+                    cleo: None,
                 });
                 match r {
                     Ok(k) => println!("  injetado: {}", k.display()),
