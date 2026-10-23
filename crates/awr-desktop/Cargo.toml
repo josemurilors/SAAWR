@@ -13,3 +13,8 @@ serde.workspace = true
 serde_json.workspace = true
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
+
+[features]
+# Without this, plain `cargo run` opens the dev server URL (localhost:1420) instead of the built ui/dist.
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
