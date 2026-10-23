@@ -45,7 +45,8 @@ git clone https://github.com/josemurilors/SAAWR.git && cd SAAWR
 scripts/fixtures.sh "/d/Games/GTA San Andreas"   # fixtures do jogo, só locais
 cargo test --all
 cargo run -p awr-cli -- status --gta "D:\Games\GTA San Andreas"
-cargo run -p awr-app                              # interface: solte a pasta do mod na janela
+npm --prefix ui ci && npm --prefix ui run build   # interface (React)
+cargo run -p awr-desktop --release                # abre o app: solte a pasta do mod na janela
 ```
 
 ## 1. Objetivo
@@ -68,11 +69,11 @@ O SA-AWR automatiza o método "adicionar sem substituir" dos tutoriais MixMods. 
 - **Lote:** uma pasta com subpastas vira uma fila; o nome vem da pasta e a referência do nome do `.dff` (`sanchez.dff` sugere `sanchez`).
 - **Checker:** bloqueia a injeção sem ModLoader, FLA ou OLA e avisa de `cargrp.dat` duplicado, limites do OLA ativos no `.ini` e jogo aberto.
 - **Armas:** pasta própria em `modloader/awr-weapons` com o `.ide`, o `Loader.txt` (linhas de `weapon.dat` e `object.dat` clonadas da arma de referência) e, no FLA, a linha do `gtasa_weapon_config.dat` com um tipo de arma novo (a partir de 70). As texturas de HUD (`*icon`, `*crosshair`) do `.txd` são renomeadas para a nova arma.
-- **CLI** (`status`, `doctor`, `groups`, `weapons`, `inject`, `inject-weapon`, `batch`, `enable`, `disable`, `remove`, `repair`) e **interface egui** com abas Importar/Instalados.
+- **CLI** (`status`, `doctor`, `groups`, `weapons`, `inject`, `inject-weapon`, `batch`, `enable`, `disable`, `remove`, `repair`) e **interface** (Tauri + React) com abas Importar/Instalados.
 
 ## 2. Princípios
 
-1. **100% Rust:** interface nativa em egui, sem WebView.
+1. **Núcleo em Rust, interface em React:** toda a regra de negócio fica no `awr-core`; a interface é uma casca fina (Tauri 2 + React) que só chama comandos. Roda no WebView2 do Windows 11. O app egui antigo (`awr-app`) continua no repositório até a interface nova ser aprovada.
 2. **Disco como fonte da verdade:** cada mod tem um `meta.json`; o inventário é refeito por varredura, sem banco paralelo.
 3. **Bytes, não strings:** arquivos do jogo são CRLF + Windows-1252; a ferramenta troca só os tokens que precisa e preserva o resto byte a byte.
 4. **Core sem GUI:** `awr-core` é testável sozinho; a CLI e a interface usam o mesmo core.
@@ -82,7 +83,8 @@ O SA-AWR automatiza o método "adicionar sem substituir" dos tutoriais MixMods. 
 ```mermaid
 flowchart LR
     CLI["awr-cli"] --> CORE["awr-core"]
-    APP["awr-app (egui)"] --> CORE
+    APP["awr-desktop (Tauri)"] --> CORE
+    UI["ui/ (React)"] --> APP
     CORE --> GAME["data/ do jogo (só leitura)"]
     CORE --> ML["modloader/awr-cars, awr-weapons"]
     CORE --> FLA["FLA: .ini, áudio, weapon_config"]
@@ -95,7 +97,8 @@ flowchart LR
 | Área | Escolha | Papel |
 | --- | --- | --- |
 | Linguagem | Rust (edição 2021) | Core, CLI e interface |
-| Interface | `eframe`/`egui` + `rfd` | Janela única, drag-and-drop e seletor de pastas |
+| Interface | Tauri 2 + React 19 + Vite (TypeScript) | Janela com abas, drag-and-drop de pastas, seletor nativo |
+| Interface antiga | `eframe`/`egui` + `rfd` | `awr-app`, mantida por enquanto |
 | Encoding | `encoding_rs` | Windows-1252 dos arquivos do jogo |
 | Erros | `thiserror` | `AwrError` por domínio |
 | Estado | `serde` + `serde_json` | `meta.json` e configuração |
@@ -110,7 +113,9 @@ SAAWR/
 ├── crates/
 │   ├── awr-core/src/   # lógica: injector, weapons, checker, batch, pack, readme, tuning, fla, references, ids…
 │   ├── awr-cli/src/    # binário `awr-cli`
-│   └── awr-app/src/    # interface egui (`awr-app`)
+│   ├── awr-app/src/    # interface egui antiga (`awr-app`)
+│   └── awr-desktop/    # casca Tauri: comandos sobre o core (`awr-desktop`)
+├── ui/                 # front end React + Vite + TypeScript
 ├── fixtures/           # poisoned_cp1252.ini versionado; arquivos do jogo só locais
 ├── scripts/fixtures.sh # copia as fixtures da sua instalação do GTA SA
 ├── docs/               # escopo (spec) e plano de desenvolvimento
@@ -147,7 +152,7 @@ Os testes não substituem o teste no jogo. O formato de pasta do ModLoader, o ha
 1. Gere as fixtures locais: `scripts/fixtures.sh "/d/Games/GTA San Andreas"`.
 2. Rode os testes: `cargo test --all`.
 3. Veja o diagnóstico da sua instalação: `cargo run -p awr-cli -- doctor --gta "D:\Games\GTA San Andreas"`.
-4. Abra a interface com `cargo run -p awr-app`, informe a pasta do jogo no menu "GTA SA" e solte a pasta do mod na janela.
+4. Abra a interface: `npm --prefix ui ci && npm --prefix ui run build`, depois `cargo run -p awr-desktop --release`. Informe a pasta do jogo no botão "GTA SA" e solte a pasta do mod na janela. Para mexer só no visual, `npm --prefix ui run dev` abre `http://localhost:1420` no navegador com dados de exemplo.
 5. Ou use a CLI: `awr-cli inject --name "VW New Beetle" --ref uranus --pack "<pasta do mod>" --gta "<jogo>"` (ou `batch <pasta>` para vários; sem `--yes` só simula).
 
 Carros de packs com recursos do ImVehFt/VehFuncs (rodas variáveis, luzes) precisam desses plugins instalados no jogo.
@@ -173,13 +178,13 @@ Sem as fixtures do jogo (como na CI), os testes que dependem delas avisam "pulad
 - [x] Injector (injetar, desativar, remover, reparar) + CLI.
 - [x] Fase 1: 4 veículos reais injetados e removidos numa cópia do jogo, sem resíduo; `data\` idêntico ao original.
 - [x] Pacote com peças de tuning, paintjobs e cores IVF funcionando no jogo.
-- [x] Fase 2: interface egui (importar, lote, tráfego, inventário, health). O visual definitivo fica para depois.
+- [x] Fase 2: interface (importar, lote, tráfego, inventário, health) em egui e, agora, em Tauri + React.
 - [x] Fase 3: armas (pistola, fuzil e arma branca) injetadas, testadas no jogo e removidas sem resíduo; o `gtasa_weapon_config.dat` volta idêntico ao `.bak`.
 - [ ] Fase 4: release `.exe` portable.
 
 ## 9. Limites de escopo e evolução
 
-**Dentro:** carros, motos, barcos, aeronaves e armas novos via ModLoader, com peças de tuning, paintjobs e cores IVF do pacote (renomeadas para o carro). **Fora:** edição de handling campo a campo, múltiplos perfis do ModLoader, Android, telemetria e rede. **Pendências conhecidas:** armas especiais (silenciador, jetpack, binóculos, lançadores já herdam as linhas associadas); usar as linhas de arma do readme do pacote (hoje clona a referência); usar o carcols que o pacote traz no readme (o handling já é usado); áudio "silencioso" (hoje sem áudio clonado não foi testado no jogo); scripts CLEO de pacotes; redesenho visual da interface. **Evoluções possíveis:** importação de mods de terceiros e interface em inglês.
+**Dentro:** carros, motos, barcos, aeronaves e armas novos via ModLoader, com peças de tuning, paintjobs e cores IVF do pacote (renomeadas para o carro). **Fora:** edição de handling campo a campo, múltiplos perfis do ModLoader, Android, telemetria e rede. **Pendências conhecidas:** armas especiais (silenciador, jetpack, binóculos, lançadores já herdam as linhas associadas); usar as linhas de arma do readme do pacote (hoje clona a referência); usar o carcols que o pacote traz no readme (o handling já é usado); áudio "silencioso" (carro sem linha de áudio testado no jogo e funciona); scripts CLEO de pacotes; redesenho visual da interface. **Evoluções possíveis:** importação de mods de terceiros e interface em inglês.
 
 ## 10. Documentação complementar
 
