@@ -159,7 +159,7 @@ Sem as fixtures do jogo (como na CI), os testes que dependem delas avisam "pulad
 
 ## 9. Limites de escopo e evolução
 
-**Dentro:** carros, motos, barcos, aeronaves e armas novos via ModLoader. **Fora:** tuning (carmods), edição de handling campo a campo, múltiplos perfis do ModLoader, Android, telemetria e rede. **Evoluções possíveis:** importação de mods de terceiros e interface em inglês.
+**Dentro:** carros, motos, barcos, aeronaves e armas novos via ModLoader, com peças de tuning, paintjobs e cores IVF do pacote (renomeadas para o carro). **Fora:** edição de handling campo a campo, múltiplos perfis do ModLoader, Android, telemetria e rede. **Evoluções possíveis:** importação de mods de terceiros e interface em inglês.
 
 ## 10. Documentação complementar
 

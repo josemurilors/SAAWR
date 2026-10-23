@@ -279,7 +279,12 @@ severidade (`Info | Warn | Error | Fixable`):
 | **Auto-Patching Engine** | Clonagem transparente da linha de handling da referência (prefixos `!` moto, `%` barco, `$` avião/heli respeitados), geração da linha IDE, entrada cargrp (faixa de tráfego por classe), e alocação/clone de áudio no FLA. Usuário não vê nada disso; só "Injetar". |
 | **Limpeza & Restauração** | Excluir mod = apagar pasta + varrer resíduos (linhas órfãs em cargrp/áudio/weapon_config), depois **re-sync do `.ini` do FLA**. Botão global "Reparar instalação" roda a mesma pipeline sem apagar nada. |
 
-Fora do MVP (roadmap futuro): tuning parts (carcols/carmods), editor avançado de
+Entrou na Fase 1 (confirmado no jogo em 2026-10-23): peças de tuning (`*.dff` renomeadas
+`{peça}_{short}`, IDs próprios, linha `carmods` e IDE de cada peça no `linhas.txt`),
+paintjobs `{ref}N.txd` -> `{short}N.txd` e `.ivfc` do ImVehFt com `vehicle_id` trocado. Exige
+ImVehFt/VehFuncs (rodas, luzes) no jogo. O GXT original não tem nome por peça: sem `.fxt` de peça.
+
+Fora do MVP (roadmap futuro): editor avançado de
 handling campo-a-campo, perfis múltiplos de modloader, importação de mods de
 terceiros (criar meta.json retroativo), tradução EN da UI.
 
