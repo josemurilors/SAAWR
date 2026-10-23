@@ -1,0 +1,8 @@
+# Game files and fixtures are CRLF + Windows-1252: Git must never normalize them.
+*.ini -text
+*.cfg -text
+*.ide -text
+*.dat -text
+*.fxt -text
+*.expected -text
+fixtures/** -text
