@@ -9,6 +9,7 @@ use crate::fla::{self, Needs};
 use crate::inventory::{self, ModKey, CARS_DIR, DISABLED_PREFIX};
 use crate::meta::{self, Files, Meta, ModKind, Part};
 use crate::paths::InstallInfo;
+use crate::readme::FoundHandling;
 use crate::references::VehicleRef;
 use crate::{audio, cargrp, fsutil, handling, ide, ids, tuning, validators};
 use std::{collections::BTreeSet, fs, io, path::Path, path::PathBuf};
@@ -63,6 +64,8 @@ pub struct InjectVehicle<'a> {
     pub parts: Option<&'a Path>,
     /// ImVehFt color file; its `vehicle_id` is pointed at the new ID.
     pub ivfc: Option<&'a Path>,
+    /// The pack author's handling lines, used instead of a copy of the reference's.
+    pub handling: Option<&'a FoundHandling>,
 }
 
 /// Files of a vehicle pack beyond the car itself, already renamed.
@@ -136,6 +139,7 @@ impl Injector<'_> {
                 fxt: Some(format!("{}.fxt", req.short)),
             },
             parts: pack.parts.iter().map(|p| p.2.clone()).collect(),
+            pack_handling: req.handling.is_some(),
         };
 
         let stage = ml.join(STAGING).join(&folder);
@@ -167,7 +171,7 @@ impl Injector<'_> {
         )?;
         fsutil::write_atomic(
             &stage.join("linhas.txt"),
-            &self.lines_file(r, id, req.short, &pack),
+            &self.lines_file(r, id, req.short, &pack, req.handling),
         )?;
         meta::write(&stage, &m)?;
 
@@ -277,8 +281,18 @@ impl Injector<'_> {
     }
 
     /// Everything ModLoader should match by content: handling, IDE and carcols.
-    fn lines_file(&self, r: &VehicleRef, id: u32, short: &str, pack: &Pack) -> Vec<u8> {
-        let (standard, special) = handling::clone_lines(r, short);
+    fn lines_file(
+        &self,
+        r: &VehicleRef,
+        id: u32,
+        short: &str,
+        pack: &Pack,
+        own: Option<&FoundHandling>,
+    ) -> Vec<u8> {
+        let (standard, special) = match own {
+            Some(h) => handling::from_pack(r, h, short),
+            None => handling::clone_lines(r, short),
+        };
         let data = self.info.data();
         let carmods = fsutil::read(&data.join("carmods.dat")).ok();
         let veh_mods = fsutil::read(&data.join("maps/veh_mods/veh_mods.ide")).ok();
@@ -495,6 +509,7 @@ mod tests {
             paintjobs: None,
             parts: None,
             ivfc: None,
+            handling: None,
         }
     }
 
@@ -714,6 +729,34 @@ num_colors 1
         })
         .unwrap();
         assert!(!traffic.exists());
+    }
+
+    #[test]
+    fn pack_handling_replaces_the_reference_copy() {
+        if !have_game_fixtures() {
+            return;
+        }
+        let (d, info, refs) = install();
+        let inj = Injector {
+            info: &info,
+            refs: &refs,
+            id_floor: 12500,
+        };
+        let f = d.path().join("gta_sa.exe");
+        let own = FoundHandling {
+            standard: b"URANUS 1315.0 3000.0".to_vec(),
+            special: None,
+            source: Default::default(),
+        };
+        let key = inj
+            .inject_vehicle(&InjectVehicle {
+                handling: Some(&own),
+                ..req("beetle", "uranus", &f)
+            })
+            .unwrap();
+        let lines = read(&key.join("linhas.txt"));
+        assert!(lines.starts_with(b"BEETLE 1315.0 3000.0"));
+        assert!(meta::read(&key).unwrap().pack_handling);
     }
 
     #[test]

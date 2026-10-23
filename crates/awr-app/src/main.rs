@@ -83,6 +83,8 @@ struct Item {
     files: PackFiles,
     traffic: Traffic,
     audio: bool,
+    /// Use the handling the pack ships (when it has one) instead of copying the reference.
+    use_handling: bool,
     include: bool,
 }
 
@@ -95,6 +97,7 @@ impl Item {
             files: c.files,
             traffic: Traffic::Auto,
             audio: true,
+            use_handling: true,
             include: true,
         }
     }
@@ -298,6 +301,7 @@ impl App {
                             paintjobs: item.files.paintjobs.as_deref(),
                             parts: item.files.parts.as_deref(),
                             ivfc: item.files.ivfc.as_deref(),
+                            handling: item.files.handling.as_ref().filter(|_| item.use_handling),
                         });
                         match &res {
                             Ok(k) => logs.push(format!("injetado: {}", k.display())),
@@ -402,6 +406,12 @@ impl App {
                                 ui.label("Tráfego:");
                                 traffic_combo(ui, n, &g.groups, &mut item.traffic);
                             });
+                        }
+                        if item.files.handling.is_some() {
+                            ui.checkbox(
+                                &mut item.use_handling,
+                                "Usar o handling do pacote (readme)",
+                            );
                         }
                         let extras: Vec<&str> = [
                             (item.files.parts.is_some(), "tuning"),
@@ -676,6 +686,9 @@ impl Row {
         }
         if self.ivfc {
             v.push("cores IVF".into());
+        }
+        if m.pack_handling {
+            v.push("handling do pacote".into());
         }
         v.push(match m.traffic_group.as_deref() {
             None => "sem tráfego".into(),

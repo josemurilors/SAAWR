@@ -16,6 +16,7 @@ pub mod inventory;
 pub mod meta;
 pub mod pack;
 pub mod paths;
+pub mod readme;
 pub mod references;
 #[cfg(test)]
 mod testutil;

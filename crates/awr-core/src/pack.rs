@@ -1,6 +1,7 @@
 //! Finds the parts of a downloaded vehicle pack by its usual layout:
 //! `{name}.dff` + `{name}.txd` at the top, `Paintjobs/`, `Tuning Parts/`, `IVF Colors/ImVehFt/colors/*.ivfc`.
 
+use crate::readme::{self, FoundHandling};
 use std::{fs, path::Path, path::PathBuf};
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -10,6 +11,8 @@ pub struct PackFiles {
     pub paintjobs: Option<PathBuf>,
     pub parts: Option<PathBuf>,
     pub ivfc: Option<PathBuf>,
+    /// Handling the pack ships in its readme, if any.
+    pub handling: Option<FoundHandling>,
 }
 
 /// Files of `dir` (not recursive) with the given extension, sorted.
@@ -48,8 +51,15 @@ pub fn discover(dir: &Path, reference: &str) -> PackFiles {
         .and_then(|d| sub_dir(&d, "ImVehFt"))
         .and_then(|d| sub_dir(&d, "colors"))
         .and_then(|d| with_ext(&d, "ivfc").into_iter().next());
+    let dff = pick(dir, reference, "dff");
+    let stem = dff
+        .as_ref()
+        .and_then(|d| d.file_stem())
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
     PackFiles {
-        dff: pick(dir, reference, "dff"),
+        handling: readme::find_handling(dir, &stem),
+        dff,
         txd: pick(dir, reference, "txd"),
         paintjobs: sub_dir(dir, "Paintjobs"),
         parts: sub_dir(dir, "Tuning Parts"),

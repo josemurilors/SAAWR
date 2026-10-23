@@ -47,6 +47,9 @@ pub struct Meta {
     pub files: Files,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub parts: Vec<Part>,
+    /// Handling came from the pack's readme instead of a copy of the reference.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pack_handling: bool,
 }
 
 /// UTC timestamp for `created`, from Unix seconds (civil-from-days, no date crate).
@@ -99,6 +102,7 @@ pub(crate) fn sample(id: u32, short: &str) -> Meta {
             fxt: None,
         },
         parts: vec![],
+        pack_handling: false,
     }
 }
 

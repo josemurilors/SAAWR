@@ -63,6 +63,7 @@ O SA-AWR automatiza o método "adicionar sem substituir" dos tutoriais MixMods. 
 - Alocação de IDs, clonagem das linhas de handling/IDE/carcols/fxt, cargrp e áudio.
 - **Injeção de veículos** (carro, moto, barco, avião): pasta própria em `modloader/awr-cars`, injeção atômica, ligar/desligar, remover e reparar sem resíduo.
 - **Pacote completo:** peças de tuning (renomeadas `{peça}_{short}`, com IDs próprios e linhas `carmods`/IDE), paintjobs (`{ref}N.txd` vira `{short}N.txd`) e cores do ImVehFt (`vehicle_id` trocado).
+- **Handling do pacote:** se o readme traz a linha de handling (e a `!`/`%`/`$` de moto, barco e avião), ela é usada no lugar da cópia da referência; dá para desligar na interface (`--no-pack-handling` na CLI).
 - **Tráfego à escolha:** como a referência, nenhum, ou um dos grupos do `cargrp.dat`.
 - **Lote:** uma pasta com subpastas vira uma fila; o nome vem da pasta e a referência do nome do `.dff` (`sanchez.dff` sugere `sanchez`).
 - **Checker:** bloqueia a injeção sem ModLoader, FLA ou OLA e avisa de `cargrp.dat` duplicado, limites do OLA ativos no `.ini` e jogo aberto.
@@ -174,7 +175,7 @@ Sem as fixtures do jogo (como na CI), os testes que dependem delas avisam "pulad
 
 ## 9. Limites de escopo e evolução
 
-**Dentro:** carros, motos, barcos, aeronaves e armas novos via ModLoader, com peças de tuning, paintjobs e cores IVF do pacote (renomeadas para o carro). **Fora:** edição de handling campo a campo, múltiplos perfis do ModLoader, Android, telemetria e rede. **Pendências conhecidas:** armas; usar o handling/carcols que o pacote traz no readme (hoje clona a referência); áudio "silencioso" (hoje sem áudio clonado não foi testado no jogo); scripts CLEO de pacotes; redesenho visual da interface. **Evoluções possíveis:** importação de mods de terceiros e interface em inglês.
+**Dentro:** carros, motos, barcos, aeronaves e armas novos via ModLoader, com peças de tuning, paintjobs e cores IVF do pacote (renomeadas para o carro). **Fora:** edição de handling campo a campo, múltiplos perfis do ModLoader, Android, telemetria e rede. **Pendências conhecidas:** armas; usar o carcols que o pacote traz no readme (o handling já é usado); áudio "silencioso" (hoje sem áudio clonado não foi testado no jogo); scripts CLEO de pacotes; redesenho visual da interface. **Evoluções possíveis:** importação de mods de terceiros e interface em inglês.
 
 ## 10. Documentação complementar
 
