@@ -8,6 +8,7 @@ use crate::error::{AwrError, NotFoundKind, Result};
 use crate::injector::{edit_global, io_at, Injector, STAGING};
 use crate::inventory::{self, ModKey, WEAPONS_DIR};
 use crate::meta::{self, Files, Meta, ModKind};
+use crate::readme::FoundWeapon;
 use crate::text::{lines, replace_spans, tokens};
 use crate::{fsutil, ids, validators};
 use std::{collections::BTreeSet, fs, path::Path};
@@ -137,6 +138,32 @@ pub fn clone_dat(r: &WeaponRef, name: &str, model_id: u32) -> Vec<Vec<u8>> {
         .collect()
 }
 
+/// The pack author's `weapon.dat` lines under the new name and model ID.
+fn own_dat(lines: &[Vec<u8>], name: &str, model_id: u32) -> Vec<Vec<u8>> {
+    let id = model_id.to_string();
+    lines
+        .iter()
+        .map(|l| {
+            let t = tokens(l);
+            replace_spans(l, &[(t[1], name.as_bytes()), (t[5], id.as_bytes())])
+        })
+        .collect()
+}
+
+/// The pack author's `weap` IDE line, ID and file names swapped.
+fn own_ide(line: &[u8], model_id: u32, short: &str) -> Vec<u8> {
+    let t = tokens(line);
+    let id = model_id.to_string();
+    replace_spans(
+        line,
+        &[
+            (t[0], id.as_bytes()),
+            (t[1], short.as_bytes()),
+            (t[2], short.as_bytes()),
+        ],
+    )
+}
+
 /// `id, model, txd, ifp, ...` of the `weap` block: ID and file names swapped.
 pub fn clone_ide(r: &WeaponRef, model_id: u32, short: &str) -> Vec<u8> {
     let t = tokens(&r.ide_line);
@@ -157,9 +184,18 @@ pub fn clone_object(r: &WeaponRef, short: &str) -> Option<Vec<u8>> {
 }
 
 /// Everything the weapon needs in its `Loader.txt`: the IDE include and the cloned lines.
-pub fn loader_txt(r: &WeaponRef, name: &str, short: &str, model_id: u32) -> Vec<u8> {
+pub fn loader_txt(
+    r: &WeaponRef,
+    own: Option<&FoundWeapon>,
+    name: &str,
+    short: &str,
+    model_id: u32,
+) -> Vec<u8> {
     let mut out: Vec<Vec<u8>> = vec![format!("IDE DATA\\MAPS\\{short}.ide").into_bytes()];
-    out.extend(clone_dat(r, name, model_id));
+    match own {
+        Some(w) => out.extend(own_dat(&w.dat_lines, name, model_id)),
+        None => out.extend(clone_dat(r, name, model_id)),
+    }
     out.extend(clone_object(r, short));
     out.into_iter()
         .flat_map(|l| [l, b"\r\n".to_vec()].concat())
@@ -189,29 +225,51 @@ fn is_line_of(l: &[u8], name: &str) -> bool {
         }) || is_associated(l, name))
 }
 
-/// Appends the weapon at the end, as the tutorial says: the reference's line with the new
-/// type ID and name, plus the reference as parent (so it shoots and sounds the same). The
-/// associated lines (rocket launchers) go after it. No-op if the name is already there.
-pub fn config_add(file: &[u8], r: &WeaponRef, name: &str, type_id: u32) -> Vec<u8> {
+/// The lines the weapon adds to `gtasa_weapon_config.dat`: its own (type ID and name swapped;
+/// the author's parent is kept) or the reference's with the reference as parent, so it shoots
+/// and sounds the same. Associated lines (rocket launchers) follow.
+pub fn config_lines(
+    r: &WeaponRef,
+    own: Option<&FoundWeapon>,
+    name: &str,
+    type_id: u32,
+) -> Vec<Vec<u8>> {
+    let id = type_id.to_string();
+    let main = match own.and_then(|w| w.config_line.as_deref()) {
+        Some(line) => {
+            let line = line.trim_ascii_end();
+            let t = tokens(line);
+            replace_spans(line, &[(t[0], id.as_bytes()), (t[1], name.as_bytes())])
+        }
+        None => {
+            let line = r.config_line.trim_ascii_end();
+            let t = tokens(line);
+            let mut edits: Vec<((usize, usize), &[u8])> =
+                vec![(t[0], id.as_bytes()), (t[1], name.as_bytes())];
+            if let Some(&parent) = t.get(10) {
+                edits.push((parent, r.name.as_bytes()));
+                replace_spans(line, &edits)
+            } else {
+                [&replace_spans(line, &edits)[..], b" ", r.name.as_bytes()].concat()
+            }
+        }
+    };
+    let mut out = vec![main];
+    out.extend(
+        r.associated
+            .iter()
+            .map(|a| replace_spans(a, &[(tokens(a)[2], name.as_bytes())])),
+    );
+    out
+}
+
+/// Appends the lines at the end, as the tutorial says. No-op if the name is already there.
+pub fn config_add(file: &[u8], new_lines: &[Vec<u8>], name: &str) -> Vec<u8> {
     if lines(file).any(|l| is_line_of(l, name)) {
         return file.to_vec();
     }
     let eol = eol_of(file);
-    let line = r.config_line.trim_ascii_end();
-    let t = tokens(line);
-    let id = type_id.to_string();
-    let mut edits: Vec<((usize, usize), &[u8])> =
-        vec![(t[0], id.as_bytes()), (t[1], name.as_bytes())];
-    let mut new = if let Some(&parent) = t.get(10) {
-        edits.push((parent, r.name.as_bytes()));
-        replace_spans(line, &edits)
-    } else {
-        [&replace_spans(line, &edits)[..], b" ", r.name.as_bytes()].concat()
-    };
-    for a in &r.associated {
-        new.extend_from_slice(eol);
-        new.extend(replace_spans(a, &[(tokens(a)[2], name.as_bytes())]));
-    }
+    let new = new_lines.join(eol);
     let mut out = file.to_vec();
     // a file without a final newline stays that way, so `config_remove` can undo it exactly
     if out.is_empty() || out.ends_with(b"\n") {
@@ -249,6 +307,8 @@ pub struct InjectWeapon<'a> {
     /// `weapon.dat` name of the original weapon to clone, e.g. `DESERT_EAGLE`.
     pub reference: &'a str,
     pub created: &'a str,
+    /// The pack author's weapon lines, used instead of copies of the reference's.
+    pub own: Option<&'a FoundWeapon>,
 }
 
 /// `(offset of the 32-byte name field, name)` of every texture in a RenderWare `.txd`.
@@ -374,6 +434,10 @@ impl Injector<'_> {
             },
             parts: vec![],
             pack_handling: false,
+            weapon_config: config_lines(r, req.own, &name, type_id)
+                .iter()
+                .map(|l| fsutil::cp1252_to_string(l))
+                .collect(),
         };
 
         let stage = ml.join(STAGING).join(&folder);
@@ -383,16 +447,15 @@ impl Injector<'_> {
         let txd = fsutil::read(req.txd)?;
         let txd = fix_hud_textures(&txd, req.short).unwrap_or(txd);
         fsutil::write_atomic(&stage.join(&m.files.txd), &txd)?;
-        let ide = [
-            b"weap\r\n".to_vec(),
-            clone_ide(r, id, req.short),
-            b"\r\nend\r\n".to_vec(),
-        ]
-        .concat();
+        let ide_line = match req.own.and_then(|w| w.ide_line.as_deref()) {
+            Some(l) => own_ide(l, id, req.short),
+            None => clone_ide(r, id, req.short),
+        };
+        let ide = [b"weap\r\n".to_vec(), ide_line, b"\r\nend\r\n".to_vec()].concat();
         fsutil::write_atomic(&stage.join(format!("{}.ide", req.short)), &ide)?;
         fsutil::write_atomic(
             &stage.join("Loader.txt"),
-            &loader_txt(r, &name, req.short, id),
+            &loader_txt(r, req.own, &name, req.short, id),
         )?;
         meta::write(&stage, &m)?;
 
@@ -412,20 +475,19 @@ impl Injector<'_> {
             .join(CONFIG))
     }
 
-    /// The weapon's line in the FLA's `gtasa_weapon_config.dat`.
+    /// The weapon's lines in the FLA's `gtasa_weapon_config.dat`: exactly what `meta.json` kept.
     pub(crate) fn weapon_globals(&self, m: &Meta, add: bool) -> Result<()> {
         let name = m.short.to_ascii_uppercase();
-        let reference = self.weapons.iter().find(|w| w.name == m.reference);
-        let type_id = m.weapon_type_id.unwrap_or(70);
         let path = self.weapon_config()?;
-        match (add, reference) {
-            (true, Some(r)) => edit_global(&path, |f| config_add(f, r, &name, type_id)),
-            (true, None) => Err(AwrError::InvalidName(format!(
-                "arma de referência desconhecida: {}",
-                m.reference
-            ))),
-            (false, _) => edit_global(&path, |f| config_remove(f, &name)),
+        if !add {
+            return edit_global(&path, |f| config_remove(f, &name));
         }
+        let lines: Vec<Vec<u8>> = m
+            .weapon_config
+            .iter()
+            .map(|l| encoding_rs::WINDOWS_1252.encode(l).0.into_owned())
+            .collect();
+        edit_global(&path, |f| config_add(f, &lines, &name))
     }
 }
 
@@ -470,7 +532,7 @@ mod tests {
             clone_object(&r[1], "revolver").unwrap(),
             b"revolver\t\t1250.0,\t2500.0\t0.99"
         );
-        let loader = loader_txt(&r[1], "REVOLVER", "revolver", 12400);
+        let loader = loader_txt(&r[1], None, "REVOLVER", "revolver", 12400);
         assert!(loader.starts_with(b"IDE DATA\\MAPS\\revolver.ide\r\n$ REVOLVER"));
     }
 
@@ -520,17 +582,20 @@ mod tests {
     #[test]
     fn config_adds_at_the_end_with_parent_and_removes_cleanly() {
         let r = refs();
-        let out = config_add(CFG, &r[1], "REVOLVER", 70);
+        let out = config_add(CFG, &config_lines(&r[1], None, "REVOLVER", 70), "REVOLVER");
         let tail = String::from_utf8_lossy(&out[CFG.len()..]).into_owned();
         assert_eq!(
             tail,
             "70    REVOLVER        71   1   0   10   149  194   24  1.0 DESERT_EAGLE\r\n! SET_ASSOCIATED_WEAPON REVOLVER ROCKET\r\n"
         );
-        assert_eq!(config_add(&out, &r[1], "REVOLVER", 70), out);
+        assert_eq!(
+            config_add(&out, &config_lines(&r[1], None, "REVOLVER", 70), "REVOLVER"),
+            out
+        );
         assert_eq!(config_remove(&out, "REVOLVER"), CFG);
         assert!(config_types(&out).contains(&70) && !config_types(CFG).contains(&70));
         // no newline at the end of the file: one is added before the new line
-        let bare = config_add(b"24 X", &r[0], "A", 70);
+        let bare = config_add(b"24 X", &config_lines(&r[0], None, "A", 70), "A");
         assert!(bare.starts_with(b"24 X\n70") || bare.starts_with(b"24 X\r\n70"));
     }
 }

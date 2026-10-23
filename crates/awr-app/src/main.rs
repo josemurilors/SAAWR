@@ -322,6 +322,7 @@ impl App {
                             txd,
                             reference: &item.reference,
                             created: &meta::rfc3339(secs),
+                            own: item.files.weapon.as_ref().filter(|_| item.use_handling),
                         });
                         match &res {
                             Ok(k) => logs.push(format!("injetada: {}", k.display())),
@@ -465,6 +466,12 @@ impl App {
                                     traffic_combo(ui, n, &g.groups, &mut item.traffic);
                                 }
                             });
+                        }
+                        if item.weapon && item.files.weapon.is_some() {
+                            ui.checkbox(
+                                &mut item.use_handling,
+                                "Usar as linhas de arma do pacote (readme)",
+                            );
                         }
                         if !item.weapon && item.files.handling.is_some() {
                             ui.checkbox(

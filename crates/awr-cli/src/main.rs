@@ -17,7 +17,7 @@ const USAGE: &str = "uso: awr-cli <comando> [--gta <pasta do GTA SA>]
          [--paintjobs <pasta>] [--parts <pasta>] [--ivfc <arq>] [--short <nome curto>] [--traffic auto|none|<n° do grupo>] [--no-audio] [--no-pack-handling]
   groups
   weapons
-  inject-weapon --short <nome> --ref <ARMA, ex. DESERT_EAGLE> (--pack <pasta> | --dff <arq> --txd <arq>)
+  inject-weapon --short <nome> --ref <ARMA, ex. DESERT_EAGLE> (--pack <pasta> | --dff <arq> --txd <arq>) [--no-pack-lines]
   batch <pasta com subpastas> [--ref <modelo padrão>] [--yes]
   enable <pasta do mod>
   disable <pasta do mod>
@@ -194,6 +194,10 @@ fn run(args: &[String]) -> Result<(), String> {
                     txd: &txd,
                     reference,
                     created: &meta::rfc3339(secs),
+                    own: found
+                        .weapon
+                        .as_ref()
+                        .filter(|_| !args.iter().any(|a| a == "--no-pack-lines")),
                 })
                 .map_err(|e| e.to_string())?;
             println!("injetada: {}", key.display());

@@ -142,6 +142,7 @@ impl Injector<'_> {
             },
             parts: pack.parts.iter().map(|p| p.2.clone()).collect(),
             pack_handling: req.handling.is_some(),
+            weapon_config: vec![],
         };
 
         let stage = ml.join(STAGING).join(&folder);
@@ -813,6 +814,7 @@ num_colors 1
             txd: &f,
             reference: "DESERT_EAGLE",
             created: "2026-10-23T00:00:00Z",
+            own: None,
         };
         let key = inj.inject_weapon(&req).unwrap();
         assert!(key.ends_with("12400-revolver"));

@@ -50,6 +50,10 @@ pub struct Meta {
     /// Handling came from the pack's readme instead of a copy of the reference.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub pack_handling: bool,
+    /// Weapons: the exact lines added to `gtasa_weapon_config.dat` (CP-1252 as text), so
+    /// turning the mod back on needs nothing but this file.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub weapon_config: Vec<String>,
 }
 
 /// UTC timestamp for `created`, from Unix seconds (civil-from-days, no date crate).
@@ -103,6 +107,7 @@ pub(crate) fn sample(id: u32, short: &str) -> Meta {
         },
         parts: vec![],
         pack_handling: false,
+        weapon_config: vec![],
     }
 }
 

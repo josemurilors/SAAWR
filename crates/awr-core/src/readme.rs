@@ -12,6 +12,17 @@ pub struct FoundHandling {
     pub source: PathBuf,
 }
 
+/// The weapon lines a pack ships: `weapon.dat` (one per skill level), the `weap` IDE line and
+/// the `gtasa_weapon_config.dat` line. Authors write `ID` where the model/type ID goes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FoundWeapon {
+    pub name: String,
+    pub dat_lines: Vec<Vec<u8>>,
+    pub ide_line: Option<Vec<u8>>,
+    pub config_line: Option<Vec<u8>>,
+    pub source: PathBuf,
+}
+
 /// Tokens of a standard `handling.cfg` line: name + 35 values.
 const STANDARD_TOKENS: usize = 36;
 
@@ -53,6 +64,42 @@ fn special_name(line: &[u8]) -> Option<(u8, &[u8])> {
     };
     let ok = t.len() >= 10 && is_name(t[1]) && t[2..].iter().all(|v| is_float(v));
     ok.then(|| (prefix, t[1]))
+}
+
+fn upper_word(t: &[u8]) -> bool {
+    !t.is_empty()
+        && t.iter()
+            .all(|b| b.is_ascii_uppercase() || *b == b'_' || b.is_ascii_digit())
+}
+
+fn id_or_number(t: &[u8]) -> bool {
+    t.eq_ignore_ascii_case(b"ID") || (!t.is_empty() && t.iter().all(u8::is_ascii_digit))
+}
+
+/// `$ NAME FIRE_TYPE range range model ...` (or `\xA3` for melee): returns the weapon name.
+fn weapon_dat_name(line: &[u8]) -> Option<&[u8]> {
+    let t: Vec<&[u8]> = tokens(line).iter().map(|&(s, e)| &line[s..e]).collect();
+    let ok =
+        t.len() >= 20 && matches!(t[0], b"$" | b"\xA3") && upper_word(t[1]) && upper_word(t[2]);
+    ok.then(|| t[1])
+}
+
+/// `ID, model, txd, ifp, n, n, n`
+fn weapon_ide(line: &[u8]) -> bool {
+    let t: Vec<&[u8]> = tokens(line).iter().map(|&(s, e)| &line[s..e]).collect();
+    t.len() == 7
+        && id_or_number(t[0])
+        && t[1..4].iter().all(|x| is_name(x))
+        && t[4..].iter().all(|x| x.iter().all(u8::is_ascii_digit))
+}
+
+/// `type NAME stat second ammoUsed ammoStreet r g b float [parent]`
+fn weapon_config(line: &[u8], name: &[u8]) -> bool {
+    let t: Vec<&[u8]> = tokens(line).iter().map(|&(s, e)| &line[s..e]).collect();
+    t.len() >= 10
+        && (id_or_number(t[0]) || t[0] == b"-1")
+        && t[1].eq_ignore_ascii_case(name)
+        && is_float(t[9])
 }
 
 /// Readmes of a pack: `.txt` files at the top and one level down, in name order.
@@ -111,6 +158,33 @@ pub fn find_handling(dir: &Path, prefer: &str) -> Option<FoundHandling> {
     None
 }
 
+/// The weapon the pack describes, from the first readme with `weapon.dat` lines.
+pub fn find_weapon(dir: &Path) -> Option<FoundWeapon> {
+    for path in readmes(dir) {
+        let Ok(bytes) = fs::read(&path) else { continue };
+        let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&bytes);
+        let all: Vec<&[u8]> = lines(bytes).collect();
+        let Some(name) = all.iter().find_map(|l| weapon_dat_name(l)) else {
+            continue;
+        };
+        let dat_lines: Vec<Vec<u8>> = all
+            .iter()
+            .filter(|l| weapon_dat_name(l) == Some(name))
+            .map(|l| l.trim_ascii().to_vec())
+            .collect();
+        let pick =
+            |f: &dyn Fn(&[u8]) -> bool| all.iter().find(|l| f(l)).map(|l| l.trim_ascii().to_vec());
+        return Some(FoundWeapon {
+            name: String::from_utf8_lossy(name).into_owned(),
+            dat_lines,
+            ide_line: pick(&weapon_ide),
+            config_line: pick(&|l| weapon_config(l, name)),
+            source: path,
+        });
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -141,6 +215,21 @@ mod tests {
         ] {
             assert!(standard_name(no.as_bytes()).is_none(), "{no}");
         }
+    }
+
+    #[test]
+    fn finds_the_weapon_lines_of_a_pack_readme() {
+        let text = "weapon lines :\n\n$ LUGER   INSTANT_HIT   25.0 30.0   ID   -1   2   silenced   8   40   0.24  0.05  0.11   0  0\t\t1.1  1.0 \t 6 18  6\t 6 18  6  40\t7001\n$ LUGER   INSTANT_HIT   30.0 35.0   ID   -1   2   silenced   8   40   0.24  0.05  0.11   1  500\t1.2  1.0 \t 6 17  6\t 6 17  6  40\t7011\n\nweapon.ide lines :\n\nID, luger, luger, silenced, 1, 30, 0\n\ngtasa_weapon_config.dat\n\nID    LUGER\t\t\t\t69         1                          0                       24                      149  194   24   1.0\tPISTOL\n";
+        let d = pack(&[("(ReadMe).txt", text.into())]);
+        let w = find_weapon(d.path()).unwrap();
+        assert_eq!((w.name.as_str(), w.dat_lines.len()), ("LUGER", 2));
+        assert_eq!(
+            w.ide_line.as_deref(),
+            Some(&b"ID, luger, luger, silenced, 1, 30, 0"[..])
+        );
+        assert!(w.config_line.unwrap().starts_with(b"ID    LUGER"));
+        // a vehicle readme has no weapon lines
+        assert!(find_weapon(pack(&[("a.txt", DIRT.into())]).path()).is_none());
     }
 
     #[test]
