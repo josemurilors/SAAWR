@@ -70,6 +70,9 @@ pub struct Meta {
     /// Weapons: sold in the Ammu-Nation (needs the Custom Ammu-Nation mod).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shop: Option<Shop>,
+    /// Weapons: pickups placed in the world by the Create Weapon Pickups mod, each `ammo x y z`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pickups: Vec<String>,
 }
 
 /// UTC timestamp for `created`, from Unix seconds (civil-from-days, no date crate).
@@ -125,6 +128,7 @@ pub(crate) fn sample(id: u32, short: &str) -> Meta {
         pack_handling: false,
         weapon_config: vec![],
         shop: None,
+        pickups: vec![],
     }
 }
 

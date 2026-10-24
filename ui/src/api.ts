@@ -18,7 +18,7 @@ export interface Api {
   inject(requests: InjectRequest[]): Promise<InjectResult[]>;
   setEnabled(key: string, enabled: boolean): Promise<string>;
   remove(key: string): Promise<string>;
-  editMod(key: string, name: string, traffic: TrafficChoice | null, audio: boolean | null, shop: Shop | null, setShop: boolean): Promise<string>;
+  editMod(key: string, name: string, traffic: TrafficChoice | null, audio: boolean | null, shop: Shop | null, setShop: boolean, pickups: string[] | null): Promise<string>;
   shopDefaults(reference: string): Promise<Shop>;
   repair(): Promise<string>;
   restore(): Promise<string>;
@@ -36,7 +36,7 @@ const real: Api = {
   inject: (requests) => invoke("inject", { requests }),
   setEnabled: (key, enabled) => invoke("set_enabled", { key, enabled }),
   remove: (key) => invoke("remove", { key }),
-  editMod: (key, name, traffic, audio, shop, setShop) => invoke("edit_mod", { key, name, traffic, audio, shop, setShop }),
+  editMod: (key, name, traffic, audio, shop, setShop, pickups) => invoke("edit_mod", { key, name, traffic, audio, shop, setShop, pickups }),
   shopDefaults: (reference) => invoke("shop_defaults", { reference }),
   repair: () => invoke("repair"),
   restore: () => invoke("restore"),

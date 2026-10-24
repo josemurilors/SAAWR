@@ -12,6 +12,8 @@ export interface GameDto {
   ola: boolean;
   /** The Custom Ammu-Nation Mod is installed. */
   shop: boolean;
+  /** The Create Weapon Pickups mod is installed. */
+  pickups: boolean;
   refs: RefDto[];
   weapons: WeaponDto[];
   groups: GroupDto[];
@@ -36,6 +38,7 @@ export interface ModDto {
   trafficChoice: string;
   audio: boolean;
   shop: Shop | null;
+  pickups: string[];
 }
 export interface Snapshot {
   gtaPath: string;
@@ -71,6 +74,7 @@ export interface QItem extends ItemDto {
   /** Weapons: inherit sound/behavior from this weapon ("" = the reference). */
   soundLike: string;
   shop: Shop | null;
+  pickups: string[];
   include: boolean;
   traffic: TrafficChoice;
   audio: boolean;
@@ -90,6 +94,7 @@ export interface InjectRequest {
   special: Special | null;
   soundLike: string | null;
   shop: Shop | null;
+  pickups: string[];
 }
 export interface InjectResult { id: number; ok: boolean; message: string }
 export interface Problem { id: number; problem: string | null }

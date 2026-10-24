@@ -63,6 +63,8 @@ struct GameDto {
     modloader: bool,
     fla: bool,
     ola: bool,
+    /// The Create Weapon Pickups mod is installed.
+    pickups: bool,
     /// The Custom Ammu-Nation mod is installed (weapons can be put on sale).
     shop: bool,
     refs: Vec<RefDto>,
@@ -117,6 +119,7 @@ struct ModDto {
     traffic_choice: String,
     audio: bool,
     shop: Option<ShopDto>,
+    pickups: Vec<String>,
 }
 
 /// How a weapon is sold (Custom Ammu-Nation).
@@ -224,6 +227,9 @@ struct InjectRequest {
     sound_like: Option<String>,
     /// Weapons: put it on sale in the Ammu-Nation.
     shop: Option<ShopDto>,
+    /// Weapons: pickups to place, `x y z [ammo]` each.
+    #[serde(default)]
+    pickups: Vec<String>,
 }
 
 // ---- helpers --------------------------------------------------------------------------
@@ -316,6 +322,7 @@ fn mod_dto(m: &InstalledMod, groups: &[Group]) -> ModDto {
             .unwrap_or_else(|| "none".to_string()),
         audio: meta.is_some_and(|x| x.audio.is_some()),
         shop: meta.and_then(|x| x.shop).map(Into::into),
+        pickups: meta.map(|x| x.pickups.clone()).unwrap_or_default(),
     }
 }
 
@@ -362,6 +369,7 @@ fn snapshot_of(state: &AppState) -> Snapshot {
             fla: g.info.fla_ini().is_some(),
             ola: g.info.ola_asi.is_some(),
             shop: g.info.ammun_dat().is_some(),
+            pickups: g.info.pickups_dat().is_some(),
             refs: g
                 .refs
                 .iter()
@@ -600,6 +608,7 @@ async fn inject(
                 special: Special::parse(r.special.as_deref().unwrap_or_default()),
                 sound_like: r.sound_like.as_deref().filter(|s| !s.is_empty()),
                 shop: r.shop.map(Into::into),
+                pickups: &r.pickups,
                 cleo: c.files.cleo.as_deref().filter(|_| r.use_cleo),
             })
         } else {
@@ -673,6 +682,7 @@ async fn edit_mod(
     audio: Option<bool>,
     shop: Option<ShopDto>,
     set_shop: bool,
+    pickups: Option<Vec<String>>,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
     let traffic = traffic.map(|t| match (t.kind.as_str(), t.index) {
@@ -688,6 +698,7 @@ async fn edit_mod(
                 traffic,
                 audio,
                 shop: set_shop.then(|| shop.map(Into::into)),
+                pickups: pickups.as_deref(),
             },
         )
     })

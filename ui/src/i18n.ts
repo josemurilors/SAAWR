@@ -153,6 +153,8 @@ const EN: Record<string, string> = {
   "Excluir a arma": "Delete the weapon",
   "Excluir o veículo": "Delete the vehicle",
   // shop
+  "Pickups no mapa (x y z [munição], um por linha)": "Pickups on the map (x y z [ammo], one per line)",
+  "Precisa do Create Weapon Pickups instalado.": "Needs Create Weapon Pickups installed.",
   "Vender na Ammu-Nation": "Sell in the Ammu-Nation",
   "Precisa do Custom Ammu-Nation Mod instalado.": "Needs the Custom Ammu-Nation Mod installed.",
   "Categoria": "Category",

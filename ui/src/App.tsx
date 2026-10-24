@@ -15,6 +15,7 @@ const toQueueItem = (i: ItemDto): QItem => ({
   special: "none",
   soundLike: "",
   shop: null,
+  pickups: [],
   include: true,
   traffic: { kind: "auto" },
   audio: true,
@@ -142,6 +143,7 @@ export function App() {
           special: i.weapon && i.special !== "none" ? i.special : null,
           soundLike: i.weapon && i.special === "none" && i.soundLike ? i.soundLike : null,
           shop: i.weapon ? i.shop : null,
+          pickups: i.weapon ? i.pickups : [],
         })),
       );
       const ok = results.filter((r) => r.ok).map((r) => r.id);
@@ -168,9 +170,9 @@ export function App() {
     await refresh();
   };
 
-  const onEdit = async (m: ModDto, name: string, traffic: TrafficChoice | null, audio: boolean | null, shop: Shop | null) => {
+  const onEdit = async (m: ModDto, name: string, traffic: TrafficChoice | null, audio: boolean | null, shop: Shop | null, pickups: string[] | null) => {
     try {
-      await api.editMod(m.key, name, traffic, audio, shop, m.kind === "weapon");
+      await api.editMod(m.key, name, traffic, audio, shop, m.kind === "weapon", pickups);
       say(t("{name}: alterações salvas", { name }));
       await refresh();
       return true;

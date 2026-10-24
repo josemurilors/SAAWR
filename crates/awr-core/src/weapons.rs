@@ -401,8 +401,18 @@ pub struct InjectWeapon<'a> {
     pub sound_like: Option<&'a str>,
     /// Sell it in the Ammu-Nation (Custom Ammu-Nation mod); writes the weapon's name as a GXT entry.
     pub shop: Option<crate::meta::Shop>,
+    /// Weapon pickups for the Create Weapon Pickups mod: `x y z [ammo]` each.
+    pub pickups: &'a [String],
     /// `CLEO` folder whose files are copied into the mod's own `cleo/` folder.
     pub cleo: Option<&'a Path>,
+}
+
+/// Validates the typed pickups (`x y z [ammo]`) into `ammo x y z` (ammo defaults to 30).
+pub fn normalize_pickups(list: &[String]) -> Result<Vec<String>> {
+    list.iter()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| crate::pickups::normalize(l, 30).map_err(AwrError::InvalidName))
+        .collect()
 }
 
 /// The `.fxt` that gives the weapon its Ammu-Nation menu name (`AWR{type} {name}`).
@@ -528,6 +538,7 @@ impl Injector<'_> {
             ),
             None => None,
         };
+        let pickups = normalize_pickups(req.pickups)?;
         let name = req.short.to_ascii_uppercase();
         let m = Meta {
             v: 1,
@@ -554,6 +565,7 @@ impl Injector<'_> {
             parts: vec![],
             pack_handling: false,
             shop: req.shop,
+            pickups: pickups.clone(),
             weapon_config: {
                 let mut lines = config_lines(r, req.own, req.special, &name, type_id);
                 if let Some(p) = &sound_like {

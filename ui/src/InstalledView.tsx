@@ -3,7 +3,7 @@ import { t } from "./i18n";
 import { parseTraffic, trafficValue } from "./ImportView";
 import { Copy, FAMILY_LABEL, KindIcon, Trash, WEAPON_CLASS_LABEL, familyOf, kindOf, weaponClass, type Family } from "./Icons";
 import { HudPreview, Plate } from "./Plate";
-import { ShopFields } from "./ShopFields";
+import { PickupFields, ShopFields } from "./ShopFields";
 import type { GameDto, ModDto, Shop, TrafficChoice } from "./types";
 
 interface Props {
@@ -12,7 +12,7 @@ interface Props {
   onToggle: (m: ModDto) => void;
   onRemove: (m: ModDto) => void;
   onCopy: (text: string) => void;
-  onEdit: (m: ModDto, name: string, traffic: TrafficChoice | null, audio: boolean | null, shop: Shop | null) => Promise<boolean>;
+  onEdit: (m: ModDto, name: string, traffic: TrafficChoice | null, audio: boolean | null, shop: Shop | null, pickups: string[] | null) => Promise<boolean>;
 }
 
 /** Stable across switching a mod off (that renames its folder, so `key` changes). */
@@ -155,17 +155,18 @@ function EditSheet({ m, game, onClose, onRemove, onCopy, onEdit }: SheetProps) {
   const [traffic, setTraffic] = useState<TrafficChoice>(parseTraffic(m.trafficChoice));
   const [audio, setAudio] = useState(m.audio);
   const [shop, setShop] = useState<Shop | null>(m.shop);
+  const [pickups, setPickups] = useState<string[]>(m.pickups);
   const [confirm, setConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const dirty =
     name !== m.name ||
     (!weapon && (trafficValue(traffic) !== m.trafficChoice || audio !== m.audio)) ||
-    (weapon && JSON.stringify(shop) !== JSON.stringify(m.shop));
+    (weapon && (JSON.stringify(shop) !== JSON.stringify(m.shop) || JSON.stringify(pickups) !== JSON.stringify(m.pickups)));
 
   const save = async () => {
     setSaving(true);
-    await onEdit(m, name, weapon ? null : traffic, weapon ? null : audio, weapon ? shop : null);
+    await onEdit(m, name, weapon ? null : traffic, weapon ? null : audio, weapon ? shop : null, weapon ? pickups : null);
     setSaving(false);
   };
 
@@ -218,6 +219,7 @@ function EditSheet({ m, game, onClose, onRemove, onCopy, onEdit }: SheetProps) {
       )}
 
       {weapon && <ShopFields game={game} reference={m.reference} value={shop} onChange={setShop} />}
+      {weapon && <PickupFields game={game} value={pickups} onChange={setPickups} />}
 
       {weapon && (
         <div className="note">
@@ -241,6 +243,7 @@ function EditSheet({ m, game, onClose, onRemove, onCopy, onEdit }: SheetProps) {
             setTraffic(parseTraffic(m.trafficChoice));
             setAudio(m.audio);
             setShop(m.shop);
+            setPickups(m.pickups);
           }}
         >
           {t("Desfazer")}

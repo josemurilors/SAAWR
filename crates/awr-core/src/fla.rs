@@ -37,6 +37,8 @@ pub struct Needs {
     pub boats: u32,
     pub flying: u32,
     pub weapons: u32,
+    /// Weapon pickups placed by the Create Weapon Pickups mod.
+    pub pickups: u32,
     pub max_weapon_type: Option<u32>,
     pub max_cargrp_group_len: u32,
 }
@@ -103,6 +105,12 @@ pub fn plan(n: &Needs) -> Vec<Want> {
             "Cargrp cars per group",
             u64::from(n.max_cargrp_group_len) + 4,
         ));
+    }
+    if n.pickups > 0 {
+        out.extend([
+            w("IPL", "Enable pickup limit patch", 1),
+            w("IPL", "Pickups", count(620, n.pickups, 0)),
+        ]);
     }
     if n.weapons > 0 {
         let types = n.max_weapon_type.map_or(70, |t| u64::from(t) + 1);
@@ -332,6 +340,22 @@ mod tests {
             cars: 1,
             ..Needs::default()
         }
+    }
+
+    #[test]
+    fn pickups_raise_the_pickup_limit_and_turn_the_patch_on() {
+        let none = plan(&one_car());
+        assert!(none.iter().all(|w| w.section != "IPL"));
+        let with = plan(&Needs {
+            pickups: 3,
+            ..one_car()
+        });
+        let ipl: Vec<_> = with
+            .iter()
+            .filter(|w| w.section == "IPL")
+            .map(|w| (w.key, w.target))
+            .collect();
+        assert_eq!(ipl, [("Enable pickup limit patch", 1), ("Pickups", 650)]);
     }
 
     #[test]

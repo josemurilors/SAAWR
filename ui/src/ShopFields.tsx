@@ -19,6 +19,31 @@ const UNLOCKS = [
   "Após You've had your Chips",
 ];
 
+interface PickupProps {
+  game: GameDto | null;
+  value: string[];
+  onChange: (list: string[]) => void;
+}
+
+/** Weapon pickups in the world (Create Weapon Pickups mod): one `x y z [ammo]` per line. */
+export function PickupFields({ game, value, onChange }: PickupProps) {
+  const missing = !game?.pickups;
+  if (missing && value.length === 0) return null;
+  return (
+    <label className="fl">
+      {t("Pickups no mapa (x y z [munição], um por linha)")}
+      <textarea
+        rows={Math.min(6, Math.max(2, value.length + 1))}
+        value={value.join("\n")}
+        placeholder="2492.03 -1678.56 13.34 20"
+        onChange={(e) => onChange(e.target.value.split("\n"))}
+        disabled={missing}
+      />
+      {missing && <span className="meta">{t("Precisa do Create Weapon Pickups instalado.")}</span>}
+    </label>
+  );
+}
+
 interface Props {
   game: GameDto | null;
   reference: string;

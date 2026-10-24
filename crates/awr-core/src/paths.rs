@@ -41,6 +41,18 @@ impl InstallInfo {
             .find(|p| p.is_file())
     }
 
+    /// The Create Weapon Pickups mod's `pick-ups.dat` (in a ModLoader folder's `cleo` folder, or the root's).
+    pub fn pickups_dat(&self) -> Option<PathBuf> {
+        let from_modloader = self
+            .modloader
+            .as_ref()
+            .into_iter()
+            .flat_map(|m| subdirs(m).into_iter().map(|d| d.join("cleo/pick-ups.dat")));
+        from_modloader
+            .chain([self.root.join("CLEO/pick-ups.dat")])
+            .find(|p| p.is_file())
+    }
+
     /// RZL-Trainer's list of added weapons, if the trainer is installed.
     pub fn trainer_ini(&self) -> Option<PathBuf> {
         Some(self.root.join("CLEO/RZL-Trainer/Add-on Weapons.ini")).filter(|p| p.is_file())

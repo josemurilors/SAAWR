@@ -168,6 +168,7 @@ pub fn analyze(
             pack_handling: false,
             weapon_config: vec![],
             shop: None,
+            pickups: vec![],
         },
         notes,
     })
@@ -224,6 +225,7 @@ fn weapon(ide: &[u8], info: &InstallInfo, reference: Option<&str>) -> Result<Pro
             pack_handling: false,
             weapon_config: found.iter().map(|l| fsutil::cp1252_to_string(l)).collect(),
             shop: None,
+            pickups: vec![],
         },
         notes: vec!["a linha da arma no weapon_config é guardada como está".into()],
     })

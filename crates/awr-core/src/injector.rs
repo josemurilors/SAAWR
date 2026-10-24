@@ -39,6 +39,8 @@ pub struct EditMod<'a> {
     /// Weapons only: `Some(None)` takes it out of the Ammu-Nation, `Some(Some(_))` sets how it is
     /// sold, `None` leaves it as it is.
     pub shop: Option<Option<crate::meta::Shop>>,
+    /// Weapons only: the new list of pickups (`x y z [ammo]` each); `None` leaves them.
+    pub pickups: Option<&'a [String]>,
 }
 
 /// Where the new car shows up in traffic.
@@ -140,6 +142,7 @@ impl Injector<'_> {
         }
         let m = Meta {
             shop: None,
+            pickups: vec![],
             v: 1,
             kind: ModKind::Vehicle,
             id,
@@ -235,6 +238,9 @@ impl Injector<'_> {
         if old.kind == ModKind::Weapon {
             if let Some(shop) = req.shop {
                 new.shop = shop;
+            }
+            if let Some(list) = req.pickups {
+                new.pickups = crate::weapons::normalize_pickups(list)?;
             }
             let fxt = old.files.fxt.clone();
             match (&new.shop, &fxt) {
@@ -378,6 +384,9 @@ impl Injector<'_> {
         }
         if let Some(a) = self.info.ammun_dat() {
             crate::shop::sync_file(&a, &[])?;
+        }
+        if let Some(p) = self.info.pickups_dat() {
+            crate::pickups::sync_file(&p, &[])?;
         }
         Ok(restored)
     }
@@ -573,7 +582,23 @@ impl Injector<'_> {
     /// Everything that mirrors the enabled weapons into other mods' files.
     pub(crate) fn sync_addons(&self) -> Result<()> {
         self.sync_trainer()?;
-        self.sync_shop()
+        self.sync_shop()?;
+        self.sync_pickups()
+    }
+
+    /// Lists the enabled weapons' pickups in `pick-ups.dat` (no-op without the mod).
+    pub(crate) fn sync_pickups(&self) -> Result<()> {
+        let Some(dat) = self.info.pickups_dat() else {
+            return Ok(());
+        };
+        let entries: Vec<_> = inventory::scan(&self.modloader()?)
+            .into_iter()
+            .filter(|m| m.enabled)
+            .filter_map(|m| m.meta)
+            .filter(|m| m.kind == ModKind::Weapon && !m.pickups.is_empty())
+            .filter_map(|m| Some((m.weapon_type_id?, m.pickups)))
+            .collect();
+        crate::pickups::sync_file(&dat, &entries)
     }
 
     /// Lists the enabled, for-sale weapons in the Custom Ammu-Nation's `ammun.dat` (no-op without it).
@@ -618,6 +643,7 @@ impl Injector<'_> {
             needs.max_model_id = needs.max_model_id.max(Some(top));
             if m.kind == ModKind::Weapon {
                 needs.weapons += 1;
+                needs.pickups += u32::try_from(m.pickups.len()).unwrap_or(0);
                 needs.max_weapon_type = needs.max_weapon_type.max(m.weapon_type_id);
                 continue;
             }
@@ -1111,6 +1137,13 @@ num_colors 1
         )
         .unwrap();
         let ammun0 = read(&ammun);
+        let pk = d
+            .path()
+            .join("modloader/Create Weapon Pickups/cleo/pick-ups.dat");
+        fs::create_dir_all(pk.parent().unwrap()).unwrap();
+        fs::write(&pk, "# author\n{\n17\t20\t1 2 3\n}\n").unwrap();
+        let pk0 = read(&pk);
+        let pickups_in = ["10 20 30 12".to_string(), "40,5 50 60".to_string()];
         let f = d.path().join("gta_sa.exe");
         let scripts = d.path().join("pack-cleo");
         fs::create_dir_all(&scripts).unwrap();
@@ -1132,6 +1165,7 @@ num_colors 1
                 price: 450,
                 ammo: 12,
             }),
+            pickups: &pickups_in,
             cleo: Some(&scripts),
         };
         let key = inj.inject_weapon(&req).unwrap();
@@ -1140,6 +1174,12 @@ num_colors 1
         assert!(shop.contains("70	AWR70	0	0	1	450	12	111111"), "{shop}");
         let fxt = String::from_utf8_lossy(&read(&key.join("revolver.fxt"))).into_owned();
         assert_eq!(fxt.trim(), "AWR70 Revolver");
+        let dat = String::from_utf8_lossy(&read(&pk)).into_owned();
+        assert!(
+            dat.contains("70\t12\t10 20 30\n70\t30\t40.5 50 60\n"),
+            "{dat}"
+        );
+        assert!(dat.trim_end().ends_with('}'), "{dat}");
         assert!(key.ends_with("12400-revolver"));
         for n in [
             "revolver.dff",
@@ -1200,6 +1240,7 @@ num_colors 1
         assert_eq!(read(&cfg), cfg0, "config back to the original bytes");
         assert_eq!(fs::read_to_string(&trainer).unwrap(), "; mine\n");
         assert_eq!(read(&ammun), ammun0, "shop file back to the original");
+        assert_eq!(read(&pk), pk0, "pickups file back to the original");
 
         // a full restore after a fresh injection brings every original back
         let ini = info.fla_ini().unwrap();
@@ -1242,6 +1283,7 @@ num_colors 1
             &key,
             &EditMod {
                 shop: None,
+                pickups: None,
                 name: "  Exército ~r~ Novo  ",
                 traffic: Some(Traffic::Group(29)),
                 audio: Some(false),
@@ -1269,6 +1311,7 @@ num_colors 1
             &off,
             &EditMod {
                 shop: None,
+                pickups: None,
                 name: "Parado",
                 traffic: Some(Traffic::Auto),
                 audio: Some(true),
@@ -1286,6 +1329,7 @@ num_colors 1
                 &on,
                 &EditMod {
                     shop: None,
+                    pickups: None,
                     name: "  ",
                     traffic: None,
                     audio: None

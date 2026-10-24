@@ -17,7 +17,7 @@ const USAGE: &str = "uso: awr-cli <comando> [--gta <pasta do GTA SA>]
          [--paintjobs <pasta>] [--parts <pasta>] [--ivfc <arq>] [--short <nome curto>] [--traffic auto|none|<n° do grupo>] [--no-audio] [--no-pack-handling] [--cleo]
   groups
   weapons
-  inject-weapon --short <nome> --ref <ARMA, ex. DESERT_EAGLE> (--pack <pasta> | --dff <arq> --txd <arq>) [--no-pack-lines] [--special silencer|jetpack|binoculars] [--sound-like <ARMA>] [--shop [--price n] [--ammo n] [--category 0-10] [--unlock 0-10]] [--cleo]
+  inject-weapon --short <nome> --ref <ARMA, ex. DESERT_EAGLE> (--pack <pasta> | --dff <arq> --txd <arq>) [--no-pack-lines] [--special silencer|jetpack|binoculars] [--sound-like <ARMA>] [--shop [--price n] [--ammo n] [--category 0-10] [--unlock 0-10]] [--pickup 'x y z [municao]' ...] [--cleo]
   batch <pasta com subpastas> [--ref <modelo padrão>] [--yes]
   enable <pasta do mod>
   disable <pasta do mod>
@@ -205,6 +205,11 @@ fn run(args: &[String]) -> Result<(), String> {
                     special: Special::parse(opt(args, "--special").unwrap_or_default()),
                     sound_like: opt(args, "--sound-like"),
                     shop: shop_arg(args, reference)?,
+                    pickups: &args
+                        .windows(2)
+                        .filter(|w| w[0] == "--pickup")
+                        .map(|w| w[1].clone())
+                        .collect::<Vec<_>>(),
                     own: found
                         .weapon
                         .as_ref()

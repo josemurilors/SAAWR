@@ -291,6 +291,7 @@ impl App {
                             special: Special::None,
                             sound_like: None,
                             shop: None,
+                            pickups: &[],
                             cleo: None,
                         });
                         match &res {
