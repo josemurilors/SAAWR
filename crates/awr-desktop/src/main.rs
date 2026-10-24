@@ -327,13 +327,16 @@ fn mod_dto(m: &InstalledMod, groups: &[Group]) -> ModDto {
 }
 
 fn snapshot_of(state: &AppState) -> Snapshot {
-    let settings = state.settings.lock().unwrap();
-    let game = state.game.lock().unwrap();
-    let gta_path = settings
+    // settings is released before game is locked: the commands lock game, then settings
+    let gta_path = state
+        .settings
+        .lock()
+        .unwrap()
         .gta_path
         .as_ref()
         .map(|p| p.display().to_string())
         .unwrap_or_default();
+    let game = state.game.lock().unwrap();
     let Some(g) = game.as_ref() else {
         return Snapshot {
             gta_path,

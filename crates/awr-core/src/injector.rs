@@ -268,6 +268,8 @@ impl Injector<'_> {
         if enabled {
             self.globals(&new, true)?;
         }
+        // pickups and traffic groups change what the FLA must allow
+        self.sync_fla()?;
         self.sync_addons()
     }
 
@@ -295,8 +297,9 @@ impl Injector<'_> {
     pub fn remove(&self, key: &ModKey) -> Result<()> {
         self.not_running()?;
         let m = self.own_meta(key)?;
-        io_at(key, fs::remove_dir_all(key))?;
+        // globals first: if the delete fails, the folder and its meta.json are left for `repair`
         self.globals(&m, false)?;
+        io_at(key, fs::remove_dir_all(key))?;
         self.sync_fla()?;
         self.sync_addons()
     }
@@ -826,6 +829,66 @@ mod tests {
         assert_eq!(read(&audio), audio0);
         inj.restore_originals().unwrap();
         assert_eq!(read(&info.fla_ini().unwrap()), ini0);
+    }
+
+    #[test]
+    #[allow(clippy::permissions_set_readonly_false)] // Windows-only app; undoes the lock below
+    fn a_failed_remove_keeps_the_folder_so_repair_can_clean_up() {
+        let (d, info, refs) = synthetic_install();
+        let inj = Injector {
+            info: &info,
+            refs: &refs,
+            weapons: &[],
+            id_floor: 12500,
+        };
+        let audio = info.fla_data().unwrap().join(AUDIO_CFG);
+        let audio0 = read(&audio);
+        let f = d.path().join("gta_sa.exe");
+        let key = inj.inject_vehicle(&req("mycar", "testcar", &f)).unwrap();
+        // a read-only audio cfg cannot be replaced, so removing its line fails
+        let mut perm = fs::metadata(&audio).unwrap().permissions();
+        perm.set_readonly(true);
+        fs::set_permissions(&audio, perm.clone()).unwrap();
+        assert!(inj.remove(&key).is_err());
+        perm.set_readonly(false);
+        fs::set_permissions(&audio, perm).unwrap();
+        assert!(key.join(meta::FILE).is_file(), "the meta.json must survive");
+        inj.remove(&key).unwrap();
+        assert_eq!(read(&audio), audio0);
+    }
+
+    #[test]
+    fn editing_the_traffic_group_raises_the_fla_limit() {
+        let (d, info, refs) = synthetic_install();
+        // a second group with 23 cars: one more needs `Cargrp cars per group`
+        let names: Vec<String> = (0..23).map(|i| format!("c{i}")).collect();
+        let cargrp = info.data().join("cargrp.dat");
+        let mut game = read(&cargrp);
+        game.extend(format!("{} # BIG\r\n", names.join(", ")).bytes());
+        fs::write(&cargrp, game).unwrap();
+        let inj = Injector {
+            info: &info,
+            refs: &refs,
+            weapons: &[],
+            id_floor: 12500,
+        };
+        let f = d.path().join("gta_sa.exe");
+        let key = inj.inject_vehicle(&req("mycar", "testcar", &f)).unwrap();
+        let ini = info.fla_ini().unwrap();
+        assert!(!String::from_utf8_lossy(&read(&ini)).contains("Cargrp cars per group"));
+        inj.edit_mod(
+            &key,
+            &EditMod {
+                name: "GT R34",
+                traffic: Some(Traffic::Group(1)),
+                audio: None,
+                shop: None,
+                pickups: None,
+            },
+        )
+        .unwrap();
+        let after = String::from_utf8_lossy(&read(&ini)).into_owned();
+        assert!(after.contains("Cargrp cars per group = 28"), "{after}");
     }
 
     #[test]

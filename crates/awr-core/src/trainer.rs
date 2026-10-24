@@ -1,10 +1,7 @@
 //! Keeps RZL-Trainer's `Add-on Weapons.ini` in step with the enabled AWR weapons.
 //! Our entries live between two marker lines; everything else in the file is left alone.
 
-use crate::{
-    error::{AwrError, Result},
-    fsutil,
-};
+use crate::{error::Result, fsutil};
 use std::path::Path;
 
 const BEGIN: &str = "; AWR-BEGIN (managed by SA-AWR, do not edit)";
@@ -84,15 +81,14 @@ pub fn sync_file(path: &Path, entries: &[Entry]) -> Result<()> {
         return Ok(());
     }
     let bytes = fsutil::read(path)?;
-    let text = std::str::from_utf8(&bytes).map_err(|_| {
-        AwrError::io(
-            path,
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "o arquivo não está em UTF-8",
-            ),
-        )
-    })?;
+    // a hand-edited CP-1252 file must not make every inject/remove fail after it already ran
+    let Ok(text) = std::str::from_utf8(&bytes) else {
+        tracing::warn!(
+            "{} não está em UTF-8; lista do trainer não atualizada",
+            path.display()
+        );
+        return Ok(());
+    };
     let new = sync(text, entries);
     if new.as_bytes() != bytes {
         fsutil::backup_once(path)?;
@@ -117,6 +113,16 @@ mod tests {
         assert_eq!(sync(&one, &[(72, "Luger".into()), (73, "Ak".into())]), one);
         // dropping all entries gives the manual file back
         assert_eq!(sync(&one, &[]), MANUAL.trim_end().to_string() + "\r\n");
+    }
+
+    #[test]
+    fn a_file_that_is_not_utf8_is_left_alone_without_an_error() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("Add-on Weapons.ini");
+        let cp1252 = b"[1]\r\nWeaponID     = 70\r\nName         = R\xE9gua\r\n";
+        std::fs::write(&ini, cp1252).unwrap();
+        sync_file(&ini, &[(72, "Luger".into())]).unwrap();
+        assert_eq!(std::fs::read(&ini).unwrap(), cp1252);
     }
 
     #[test]
