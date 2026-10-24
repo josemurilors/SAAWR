@@ -296,6 +296,30 @@ impl Injector<'_> {
     }
 
     /// Shorts that cannot be reused: original models/handling names and installed mods.
+    /// Writes a `meta.json` for a folder of `awr-cars`/`awr-weapons` that has none, rebuilt by
+    /// [`crate::adopt::analyze`]. The game files are not touched except for the FLA limits.
+    pub fn adopt(&self, key: &ModKey, reference: Option<&str>, created: &str) -> Result<Meta> {
+        self.not_running()?;
+        let ml = self.modloader()?;
+        let ours = key
+            .parent()
+            .is_some_and(|p| p == ml.join(CARS_DIR) || p == ml.join(inventory::WEAPONS_DIR));
+        if !ours || meta::read(key).is_ok() {
+            return Err(AwrError::InvalidName(
+                "só pastas de awr-cars/awr-weapons sem meta.json podem ser adotadas".into(),
+            ));
+        }
+        let mut m = crate::adopt::analyze(key, self.info, self.refs, reference)?.meta;
+        if self.taken_shorts().contains(&m.short.to_lowercase()) {
+            return Err(AwrError::DuplicateShort { short: m.short });
+        }
+        m.created = created.into();
+        meta::write(key, &m)?;
+        self.sync_fla()?;
+        self.sync_trainer()?;
+        Ok(m)
+    }
+
     /// Undoes everything: deletes all AWR mods (and the traffic file and staging) and puts the
     /// `.bak` originals back over the FLA `.ini`, audio config and weapon config. The trainer
     /// file only loses our block, so the user's own entries survive. Returns the restored files.
@@ -727,6 +751,36 @@ mod tests {
         assert_eq!(read(&audio), audio0);
         inj.restore_originals().unwrap();
         assert_eq!(read(&info.fla_ini().unwrap()), ini0);
+    }
+
+    #[test]
+    fn adopting_a_folder_without_meta_makes_it_manageable() {
+        let (d, info, refs) = synthetic_install();
+        let inj = Injector {
+            info: &info,
+            refs: &refs,
+            weapons: &[],
+            id_floor: 12500,
+        };
+        let f = d.path().join("gta_sa.exe");
+        let key = inj.inject_vehicle(&req("mycar", "testcar", &f)).unwrap();
+        fs::remove_file(key.join(meta::FILE)).unwrap();
+        assert!(
+            inj.set_enabled(&key, false).is_err(),
+            "foreign until adopted"
+        );
+        assert!(inj.adopt(&key, None, "now").is_err(), "reference needed");
+        let m = inj
+            .adopt(&key, Some("testcar"), "2026-10-23T00:00:00Z")
+            .unwrap();
+        assert_eq!((m.id, m.short.as_str()), (12500, "mycar"));
+        assert!(m.audio.is_some());
+        let off = inj.set_enabled(&key, false).unwrap();
+        inj.remove(&off).unwrap();
+        // a folder outside awr-cars is never adopted
+        let other = d.path().join("modloader/elsewhere");
+        fs::create_dir_all(&other).unwrap();
+        assert!(inj.adopt(&other, Some("testcar"), "now").is_err());
     }
 
     #[test]

@@ -1,5 +1,6 @@
 //! SA-AWR core: all business logic, no GUI.
 
+pub mod adopt;
 pub mod audio;
 pub mod batch;
 pub mod cargrp;

@@ -22,6 +22,7 @@ const USAGE: &str = "uso: awr-cli <comando> [--gta <pasta do GTA SA>]
   enable <pasta do mod>
   disable <pasta do mod>
   remove <pasta do mod>
+  adopt <pasta em awr-cars/awr-weapons sem meta.json> [--ref <original>] [--yes]   (sem --yes só mostra o que seria registrado)
   repair
   restore --yes   (apaga todos os mods do AWR e devolve os arquivos do jogo aos .bak originais)";
 
@@ -233,6 +234,30 @@ fn run(args: &[String]) -> Result<(), String> {
             }
             let files = inj.restore_originals().map_err(|e| e.to_string())?;
             println!("restaurado ({} arquivo(s) do .bak)", files.len());
+        }
+        "adopt" => {
+            let dir = folder()?;
+            let reference = opt(args, "--ref");
+            let p = awr_core::adopt::analyze(&dir, &info, &refs, reference)
+                .map_err(|e| e.to_string())?;
+            let m = &p.meta;
+            println!(
+                "{:?} id {} curto '{}' nome '{}' ref {}",
+                m.kind, m.id, m.short, m.name, m.reference
+            );
+            for n in &p.notes {
+                println!("  aviso: {n}");
+            }
+            if args.iter().any(|a| a == "--yes") {
+                let secs = SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .map_or(0, |d| d.as_secs());
+                inj.adopt(&dir, reference, &meta::rfc3339(secs))
+                    .map_err(|e| e.to_string())?;
+                println!("adotado");
+            } else {
+                println!("(simulação; use --yes para gravar o meta.json)");
+            }
         }
         "repair" => {
             let n = inj.repair().map_err(|e| e.to_string())?;

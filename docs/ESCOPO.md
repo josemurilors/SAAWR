@@ -263,7 +263,7 @@ severidade (`Info | Warn | Error | Fixable`):
 | Outro `cargrp.dat` no modloader além da cópia AWR | Warn: o tutorial diz que a cópia só funciona sem outro `cargrp.dat` instalado |
 | **Mods incompatíveis com add-without-replace** (Tuning Mod < v1.5, Real Traffic Fix < v1.2, mods antigos que controlam handling por modelo) | Warn com versões mínimas do tutorial oficial |
 | Permissões de escrita na pasta do jogo / modloader | Error com caminho exato |
-| Pastas `{id}-*` sem `meta.json` (mods de terceiros) | Info → inventário as lista como `estrangeiro`, **não toca** |
+| Pastas `{id}-*` sem `meta.json` (mods de terceiros) | Info → inventário as lista como `estrangeiro`, **não toca**; só `awr-cli adopt` (dentro de `awr-cars`/`awr-weapons`) recria o `meta.json` |
 | IDs duplicados entre pastas, linhas órfãs em cargrp/áudio/FLA | Fixable via cleanup |
 | Jogo em execução (arquivos travados) | Warn |
 | Limites FLA insuficientes para o inventário atual | Fixable → sync |
