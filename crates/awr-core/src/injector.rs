@@ -663,6 +663,72 @@ mod tests {
         fs::read(p).unwrap()
     }
 
+    /// A tiny made-up install (invented car and values), so this runs on CI without game files.
+    fn synthetic_install() -> (tempfile::TempDir, InstallInfo, Vec<VehicleRef>) {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        let put = |to: PathBuf, text: &str| {
+            fs::create_dir_all(to.parent().unwrap()).unwrap();
+            fs::write(to, text.replace('\n', "\r\n")).unwrap();
+        };
+        let data = r.join("data");
+        put(data.join("handling.cfg"), "; handling\nTESTCAR 1000.0 2000.0 2.0 0.0 0.0 -0.3 70 0.7 0.8 0.5 5 150.0 20.0 10.0 4 D 6.0 0.6 0 35.0 2.0 0.1 0.0 0.3 -0.1 0.5 0.2 0.2 0.2 20000 20 500002 0 1 0\n");
+        put(data.join("vehicles.ide"), "cars\n400, testcar, testcar, car, TESTCAR, TESTK, null, normal, 10, 0, 0, -1, 0.7, 0.7, 0\nend\n");
+        put(
+            data.join("carcols.dat"),
+            "car\ntestcar, 1,1, 2,2\nend\ncar4\nend\n",
+        );
+        put(
+            data.join("cargrp.dat"),
+            "# groups\ntestcar, taxi # POPCYCLE_GROUP_WORKERS\n",
+        );
+        let fla = r.join("modloader/$fastman92 limit adjuster");
+        put(
+            fla.join("data").join(AUDIO_CFG),
+            "; audio\ntestcar 0 1 2\n;the end\n",
+        );
+        put(fla.join(crate::paths::FLA_INI), "[ID LIMITS]\n#Count of killable model IDs = 800\n\n[HANDLING.CFG LIMITS]\n#Apply handling.cfg patch = 0\n#Number of standard lines = 210\n#Number of bike lines = 13\n#Number of flying lines = 24\n#Number of boat lines = 12\n\n[ADDONS]\n#Enable vehicle audio loader = 0\n\n[SPECIAL]\n#Make paintjobs work for any ID = 0\n");
+        fs::write(r.join("gta_sa.exe"), b"").unwrap();
+        fs::write(fla.join("$fastman92limitAdjuster.asi"), b"").unwrap();
+        fs::create_dir_all(r.join("modloader/OLA")).unwrap();
+        fs::write(r.join("modloader/OLA/III.VC.SA.LimitAdjuster.asi"), b"").unwrap();
+        let info = detect_install(r).unwrap();
+        let refs = load_vehicles(&info.data(), info.fla_data().as_deref()).unwrap();
+        (d, info, refs)
+    }
+
+    #[test]
+    fn synthetic_vehicle_round_trip_restores_every_global_file() {
+        let (d, info, refs) = synthetic_install();
+        assert_eq!(refs.len(), 1);
+        let inj = Injector {
+            info: &info,
+            refs: &refs,
+            weapons: &[],
+            id_floor: 12500,
+        };
+        let audio = info.fla_data().unwrap().join(AUDIO_CFG);
+        let (audio0, ini0) = (read(&audio), read(&info.fla_ini().unwrap()));
+        let f = d.path().join("gta_sa.exe");
+        let key = inj.inject_vehicle(&req("mycar", "testcar", &f)).unwrap();
+        assert!(key.ends_with("12500-mycar"));
+        let lines = String::from_utf8_lossy(&read(&key.join("linhas.txt"))).into_owned();
+        assert!(
+            lines.contains("MYCAR 1000.0") && lines.contains("12500"),
+            "{lines}"
+        );
+        assert!(String::from_utf8_lossy(&read(&audio)).contains("mycar"));
+        let ini = String::from_utf8_lossy(&read(&info.fla_ini().unwrap())).into_owned();
+        assert!(ini.contains("\nApply handling.cfg patch = 1"), "{ini}");
+        let off = inj.set_enabled(&key, false).unwrap();
+        assert_eq!(read(&audio), audio0);
+        let on = inj.set_enabled(&off, true).unwrap();
+        inj.remove(&on).unwrap();
+        assert_eq!(read(&audio), audio0);
+        inj.restore_originals().unwrap();
+        assert_eq!(read(&info.fla_ini().unwrap()), ini0);
+    }
+
     #[test]
     fn inject_disable_enable_remove_round_trip() {
         if !have_game_fixtures() {

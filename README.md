@@ -177,7 +177,7 @@ cargo clippy --all-targets -- -D warnings
 cargo test --all
 ```
 
-Sem as fixtures do jogo (como na CI), os testes que dependem delas avisam "pulado" e passam. Rode o script localmente para cobrir tudo.
+Sem as fixtures do jogo (como na CI), os testes que dependem delas avisam "pulado" e passam; um teste com instalação sintética (carro inventado) roda sempre e cobre injetar, desligar, remover e restaurar. Rode o script localmente para cobrir tudo.
 
 ## 8. Critérios de aceite
 
@@ -190,11 +190,11 @@ Sem as fixtures do jogo (como na CI), os testes que dependem delas avisam "pulad
 - [x] Pacote com peças de tuning, paintjobs e cores IVF funcionando no jogo.
 - [x] Fase 2: interface (importar, lote, tráfego, inventário, health) em egui e, agora, em Tauri + React.
 - [x] Fase 3: armas (pistola, fuzil e arma branca) injetadas, testadas no jogo e removidas sem resíduo; o `gtasa_weapon_config.dat` volta idêntico ao `.bak`.
-- [ ] Fase 4: release `.exe` portable.
+- [x] Fase 4: release `.exe` portable (v0.1.0); a CI publica o `.zip` sozinha ao enviar uma tag `v*`.
 
 ## 9. Limites de escopo e evolução
 
-**Dentro:** carros, motos, barcos, aeronaves e armas novos via ModLoader, com peças de tuning, paintjobs e cores IVF do pacote (renomeadas para o carro). **Fora:** edição de handling campo a campo, múltiplos perfis do ModLoader, Android, telemetria e rede. **Pendências conhecidas:** testar no jogo os binóculos e o jetpack; carcols do pacote só valem quando a mesma readme traz o handling, e só se o formato (pares ou quádruplas) combinar com o da referência; áudio "silencioso" (carro sem linha de áudio testado no jogo e funciona); scripts CLEO fora de uma pasta `CLEO` (soltos na raiz do pacote); **Evoluções possíveis:** importação de mods de terceiros e interface em inglês.
+**Dentro:** carros, motos, barcos, aeronaves e armas novos via ModLoader, com peças de tuning, paintjobs e cores IVF do pacote (renomeadas para o carro). **Fora:** edição de handling campo a campo, múltiplos perfis do ModLoader, Android, telemetria e rede. **Pendências conhecidas:** testar no jogo os binóculos e o jetpack; carcols do pacote só valem quando a mesma readme traz o handling, e só se o formato (pares ou quádruplas) combinar com o da referência; áudio "silencioso" (carro sem linha de áudio testado no jogo e funciona); scripts CLEO fora de uma pasta `CLEO` (soltos na raiz do pacote); **Evoluções possíveis:** importação de mods de terceiros e interface em inglês (a interface e as mensagens de erro estão em português, fixas no código).
 
 ## 10. Documentação complementar
 
