@@ -518,7 +518,7 @@ impl Injector<'_> {
                 .chain(self.weapons.iter().map(|w| w.model_id)),
             &ml,
         );
-        let id = ids::allocate_weapon(&used, *crate::ids::WEAPON_RANGE.start())?;
+        let id = ids::allocate_weapon(&used)?;
         let config = fsutil::read(&self.weapon_config()?)?;
         let mut types = config_types(&config);
         types.extend(installed.iter().filter_map(|m| m.weapon_type_id));

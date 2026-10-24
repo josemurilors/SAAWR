@@ -34,12 +34,8 @@ pub fn allocate_vehicle(used: &BTreeSet<u32>, floor: u32) -> Result<u32> {
     allocate(used, floor..=CEILING, Some(&WEAPON_RANGE))
 }
 
-pub fn allocate_weapon(used: &BTreeSet<u32>, floor: u32) -> Result<u32> {
-    allocate(
-        used,
-        floor.max(*WEAPON_RANGE.start())..=*WEAPON_RANGE.end(),
-        None,
-    )
+pub fn allocate_weapon(used: &BTreeSet<u32>) -> Result<u32> {
+    allocate(used, WEAPON_RANGE, None)
 }
 
 fn allocate(
@@ -92,10 +88,10 @@ mod tests {
     #[test]
     fn weapons_stay_in_their_range() {
         let used: BTreeSet<u32> = (12400..12499).collect();
-        assert_eq!(allocate_weapon(&used, 12400).unwrap(), 12499);
+        assert_eq!(allocate_weapon(&used).unwrap(), 12499);
         let full: BTreeSet<u32> = WEAPON_RANGE.collect();
         assert!(matches!(
-            allocate_weapon(&full, 12400),
+            allocate_weapon(&full),
             Err(AwrError::IdExhausted { used: 100, .. })
         ));
     }

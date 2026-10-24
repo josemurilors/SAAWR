@@ -7,6 +7,22 @@ pub fn lines(bytes: &[u8]) -> impl Iterator<Item = &[u8]> {
         .map(|l| l.strip_suffix(b"\r").unwrap_or(l))
 }
 
+/// Lines of another mod's file outside SA-AWR's `begin`..`end` block, and whether the block
+/// was there (no block and nothing to add means the file is left as it is).
+pub fn outside_block<'a>(text: &'a str, begin: &str, end: &str) -> (Vec<&'a str>, bool) {
+    let mut kept = vec![];
+    let (mut inside, mut found) = (false, false);
+    for line in text.lines() {
+        match line.trim() {
+            l if l == begin => (inside, found) = (true, true),
+            l if l == end => inside = false,
+            _ if !inside => kept.push(line),
+            _ => {}
+        }
+    }
+    (kept, found)
+}
+
 /// Accented Latin letters folded to plain ASCII (`Exército` -> `Exercito`); other
 /// non-ASCII characters are kept so the caller can decide what to do with them.
 pub fn fold_ascii(s: &str) -> String {

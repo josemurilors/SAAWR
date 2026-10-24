@@ -8,16 +8,14 @@ use std::path::PathBuf;
 pub struct AppSettings {
     pub gta_path: Option<PathBuf>,
     pub id_floor_vehicle: u32,
-    pub id_floor_weapon: u32,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
-        // MixMods convention: cars from 12500, weapons 12400-12499
+        // MixMods convention: cars from 12500 (weapons use ids::WEAPON_RANGE)
         Self {
             gta_path: None,
             id_floor_vehicle: 12500,
-            id_floor_weapon: 12400,
         }
     }
 }

@@ -88,7 +88,7 @@ O SA-AWR automatiza o método "adicionar sem substituir" dos tutoriais MixMods. 
 
 ## 2. Princípios
 
-1. **Núcleo em Rust, interface em React:** toda a regra de negócio fica no `awr-core`; a interface é uma casca fina (Tauri 2 + React) que só chama comandos. Roda no WebView2 do Windows 11. O app egui antigo (`awr-app`) continua no repositório até a interface nova ser aprovada.
+1. **Núcleo em Rust, interface em React:** toda a regra de negócio fica no `awr-core`; a interface é uma casca fina (Tauri 2 + React) que só chama comandos. Roda no WebView2 do Windows 11. O app egui antigo (`awr-app`) foi removido; está no histórico do Git.
 2. **Disco como fonte da verdade:** cada mod tem um `meta.json`; o inventário é refeito por varredura, sem banco paralelo.
 3. **Bytes, não strings:** arquivos do jogo são CRLF + Windows-1252; a ferramenta troca só os tokens que precisa e preserva o resto byte a byte.
 4. **Core sem GUI:** `awr-core` é testável sozinho; a CLI e a interface usam o mesmo core.
@@ -113,7 +113,6 @@ flowchart LR
 | --- | --- | --- |
 | Linguagem | Rust (edição 2021) | Core, CLI e interface |
 | Interface | Tauri 2 + React 19 + Vite (TypeScript) | Janela com abas, drag-and-drop de pastas, seletor nativo; fontes Barlow e Big Shoulders empacotadas |
-| Interface antiga | `eframe`/`egui` + `rfd` | `awr-app`, mantida por enquanto |
 | Encoding | `encoding_rs` | Windows-1252 dos arquivos do jogo |
 | Erros | `thiserror` | `AwrError` por domínio |
 | Estado | `serde` + `serde_json` | `meta.json` e configuração |
@@ -128,7 +127,6 @@ SAAWR/
 ├── crates/
 │   ├── awr-core/src/   # lógica: injector, weapons, checker, batch, pack, readme, tuning, fla, references, ids…
 │   ├── awr-cli/src/    # binário `awr-cli`
-│   ├── awr-app/src/    # interface egui antiga (`awr-app`)
 │   └── awr-desktop/    # casca Tauri: comandos sobre o core (`awr-desktop`)
 ├── ui/                 # front end React + Vite + TypeScript
 ├── fixtures/           # poisoned_cp1252.ini versionado; arquivos do jogo só locais

@@ -1,9 +1,6 @@
 //! Keeps RZL-Trainer's `Add-on Weapons.ini` in step with the enabled AWR weapons.
 //! Our entries live between two marker lines; everything else in the file is left alone.
 
-use crate::{error::Result, fsutil};
-use std::path::Path;
-
 const BEGIN: &str = "; AWR-BEGIN (managed by SA-AWR, do not edit)";
 const END: &str = "; AWR-END";
 /// The trainer's own limit on `[n]` sections.
@@ -28,16 +25,7 @@ fn weapon_id(line: &str) -> Option<u32> {
 /// Rewrites `text` so our block lists exactly `entries`; returns the new text.
 pub fn sync(text: &str, entries: &[Entry]) -> String {
     let eol = if text.contains("\r\n") { "\r\n" } else { "\n" };
-    let mut kept = Vec::new();
-    let mut inside = false;
-    for line in text.lines() {
-        match line.trim() {
-            BEGIN => inside = true,
-            END => inside = false,
-            _ if !inside => kept.push(line),
-            _ => {}
-        }
-    }
+    let (mut kept, had_block) = crate::text::outside_block(text, BEGIN, END);
     while kept.last().is_some_and(|l| l.trim().is_empty()) {
         kept.pop();
     }
@@ -54,11 +42,15 @@ pub fn sync(text: &str, entries: &[Entry]) -> String {
             continue;
         }
         next += 1;
-        let name: String = name.chars().filter(|c| !c.is_control()).collect();
+        // ASCII like every name the game shows, so the file's own encoding does not matter
+        let name = crate::ide::hud_name(name);
         block.push(
             format!("[{next}]{eol}WeaponID     = {id}{eol}Name         = {name}{eol}")
                 .replace(eol, "\n"),
         );
+    }
+    if block.is_empty() && !had_block {
+        return text.to_string();
     }
     if !block.is_empty() {
         out.push(String::new());
@@ -73,28 +65,6 @@ pub fn sync(text: &str, entries: &[Entry]) -> String {
     let mut s = out.join(eol);
     s.push_str(eol);
     s
-}
-
-/// Writes the trainer file if the result differs; a missing file means no trainer, so nothing to do.
-pub fn sync_file(path: &Path, entries: &[Entry]) -> Result<()> {
-    if !path.is_file() {
-        return Ok(());
-    }
-    let bytes = fsutil::read(path)?;
-    // a hand-edited CP-1252 file must not make every inject/remove fail after it already ran
-    let Ok(text) = std::str::from_utf8(&bytes) else {
-        tracing::warn!(
-            "{} não está em UTF-8; lista do trainer não atualizada",
-            path.display()
-        );
-        return Ok(());
-    };
-    let new = sync(text, entries);
-    if new.as_bytes() != bytes {
-        fsutil::backup_once(path)?;
-        fsutil::write_atomic(path, new.as_bytes())?;
-    }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -116,13 +86,16 @@ mod tests {
     }
 
     #[test]
-    fn a_file_that_is_not_utf8_is_left_alone_without_an_error() {
+    fn a_cp1252_file_keeps_its_bytes_and_gets_the_block() {
         let d = tempfile::tempdir().unwrap();
         let ini = d.path().join("Add-on Weapons.ini");
         let cp1252 = b"[1]\r\nWeaponID     = 70\r\nName         = R\xE9gua\r\n";
         std::fs::write(&ini, cp1252).unwrap();
-        sync_file(&ini, &[(72, "Luger".into())]).unwrap();
-        assert_eq!(std::fs::read(&ini).unwrap(), cp1252);
+        let entries = [(72, "Régua Nova".into())];
+        crate::fsutil::sync_mod_file(&ini, |t| sync(t, &entries)).unwrap();
+        let out = std::fs::read(&ini).unwrap();
+        assert!(out.starts_with(cp1252));
+        assert!(out.ends_with(b"WeaponID     = 72\r\nName         = Regua Nova\r\n; AWR-END\r\n"));
     }
 
     #[test]

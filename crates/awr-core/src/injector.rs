@@ -383,13 +383,13 @@ impl Injector<'_> {
             }
         }
         if let Some(t) = self.info.trainer_ini() {
-            crate::trainer::sync_file(&t, &[])?;
+            fsutil::sync_mod_file(&t, |t| crate::trainer::sync(t, &[]))?;
         }
         if let Some(a) = self.info.ammun_dat() {
-            crate::shop::sync_file(&a, &[])?;
+            fsutil::sync_mod_file(&a, |t| crate::shop::sync(t, &[]))?;
         }
         if let Some(p) = self.info.pickups_dat() {
-            crate::pickups::sync_file(&p, &[])?;
+            fsutil::sync_mod_file(&p, |t| crate::pickups::sync(t, &[]))?;
         }
         Ok(restored)
     }
@@ -601,7 +601,7 @@ impl Injector<'_> {
             .filter(|m| m.kind == ModKind::Weapon && !m.pickups.is_empty())
             .filter_map(|m| Some((m.weapon_type_id?, m.pickups)))
             .collect();
-        crate::pickups::sync_file(&dat, &entries)
+        fsutil::sync_mod_file(&dat, |t| crate::pickups::sync(t, &entries))
     }
 
     /// Lists the enabled, for-sale weapons in the Custom Ammu-Nation's `ammun.dat` (no-op without it).
@@ -615,7 +615,7 @@ impl Injector<'_> {
             .filter_map(|m| m.meta)
             .filter_map(|m| (m.kind == ModKind::Weapon).then_some((m.weapon_type_id?, m.shop?)))
             .collect();
-        crate::shop::sync_file(&dat, &entries)
+        fsutil::sync_mod_file(&dat, |t| crate::shop::sync(t, &entries))
     }
 
     /// Lists the enabled weapons in RZL-Trainer's `Add-on Weapons.ini` (no-op without the trainer).
@@ -629,7 +629,7 @@ impl Injector<'_> {
             .filter_map(|m| m.meta)
             .filter_map(|m| (m.kind == ModKind::Weapon).then_some((m.weapon_type_id?, m.name)))
             .collect();
-        crate::trainer::sync_file(&ini, &entries)
+        fsutil::sync_mod_file(&ini, |t| crate::trainer::sync(t, &entries))
     }
 
     /// Raises the managed FLA limits to what the enabled AWR vehicles need.
@@ -829,6 +829,116 @@ mod tests {
         assert_eq!(read(&audio), audio0);
         inj.restore_originals().unwrap();
         assert_eq!(read(&info.fla_ini().unwrap()), ini0);
+    }
+
+    /// A made-up weapon (and the three add-on mods' files) on top of `synthetic_install`.
+    fn synthetic_weapons(root: &Path, info: &InstallInfo) -> Vec<WeaponRef> {
+        let put = |to: PathBuf, text: &[u8]| {
+            fs::create_dir_all(to.parent().unwrap()).unwrap();
+            fs::write(to, text).unwrap();
+        };
+        let data = info.data();
+        put(
+            data.join("default.ide"),
+            b"weap\r\n346, testgun, testgun, colt45, 1, 30, 0\r\nend\r\n",
+        );
+        put(
+            data.join("weapon.dat"),
+            b"$ TESTGUN INSTANT_HIT 35.0 30.0 346 -1\r\n",
+        );
+        put(data.join("object.dat"), b"testgun 1250.0, 2500.0 0.99\r\n");
+        put(
+            info.fla_data().unwrap().join(crate::weapons::CONFIG),
+            b"# head\r\n22    TESTGUN   69  1  0  10  149  194  24  1.0\r\n",
+        );
+        // a hand-written CP-1252 entry the trainer sync must keep byte for byte
+        put(
+            root.join("CLEO/RZL-Trainer/Add-on Weapons.ini"),
+            b"[1]\r\nWeaponID     = 22\r\nName         = R\xE9gua\r\n",
+        );
+        put(
+            root.join("modloader/Custom Ammunation/data/ammun.dat"),
+            b"# shop\r\n22\tTESTGUN\t0\t0\t0\t200\t30\t111111\r\n",
+        );
+        put(
+            root.join("modloader/Create Weapon Pickups/cleo/pick-ups.dat"),
+            b"# author\r\n{\r\n22\t20\t1 2 3\r\n}\r\n",
+        );
+        crate::weapons::load_weapons(&data, &info.fla_data().unwrap()).unwrap()
+    }
+
+    #[test]
+    fn synthetic_weapon_round_trip_restores_every_file() {
+        let (d, info, refs) = synthetic_install();
+        let r = d.path();
+        let weapons = synthetic_weapons(r, &info);
+        assert_eq!(weapons.len(), 1);
+        let inj = Injector {
+            info: &info,
+            refs: &refs,
+            weapons: &weapons,
+            id_floor: 12500,
+        };
+        let cfg = info.fla_data().unwrap().join(crate::weapons::CONFIG);
+        let trainer = info.trainer_ini().unwrap();
+        let (ammun, pk) = (info.ammun_dat().unwrap(), info.pickups_dat().unwrap());
+        let before = [&cfg, &trainer, &ammun, &pk].map(|p| read(p));
+        let f = r.join("gta_sa.exe");
+        let key = inj
+            .inject_weapon(&crate::weapons::InjectWeapon {
+                name: "Revólver",
+                short: "revolver",
+                dff: &f,
+                txd: &f,
+                reference: "TESTGUN",
+                created: "2026-10-24T00:00:00Z",
+                own: None,
+                special: crate::weapons::Special::None,
+                sound_like: None,
+                shop: Some(crate::meta::Shop {
+                    category: 0,
+                    unlock: 1,
+                    anim: 0,
+                    price: 450,
+                    ammo: 12,
+                }),
+                pickups: &[],
+                cleo: None,
+            })
+            .unwrap();
+        assert!(key.ends_with("12400-revolver"));
+        let text = |p: &Path| String::from_utf8_lossy(&read(p)).into_owned();
+        assert!(text(&cfg).contains("70    REVOLVER"), "{}", text(&cfg));
+        assert!(text(&ammun).contains("70\tAWR70\t0\t0\t1\t450\t12\t111111"));
+        assert!(read(&trainer).starts_with(&before[1]), "manual entry kept");
+        assert!(text(&trainer).contains("WeaponID     = 70\r\nName         = Revolver"));
+        assert_eq!(read(&pk), before[3], "no pickups yet");
+
+        // pickups added by editing reach the file and the FLA pickup limit
+        let ini = info.fla_ini().unwrap();
+        assert!(!text(&ini).contains("Enable pickup limit patch = 1"));
+        let pickups = ["10 20 30 12".to_string()];
+        inj.edit_mod(
+            &key,
+            &EditMod {
+                name: "Revólver",
+                traffic: None,
+                audio: None,
+                shop: None,
+                pickups: Some(&pickups),
+            },
+        )
+        .unwrap();
+        assert!(text(&pk).contains("70\t12\t10 20 30"), "{}", text(&pk));
+        assert!(text(&ini).contains("Enable pickup limit patch = 1"));
+
+        let off = inj.set_enabled(&key, false).unwrap();
+        assert_eq!([&cfg, &trainer, &ammun, &pk].map(|p| read(p)), before);
+        let on = inj.set_enabled(&off, true).unwrap();
+        inj.remove(&on).unwrap();
+        assert_eq!([&cfg, &trainer, &ammun, &pk].map(|p| read(p)), before);
+        inj.restore_originals().unwrap();
+        assert_eq!([&cfg, &trainer, &ammun, &pk].map(|p| read(p)), before);
     }
 
     #[test]

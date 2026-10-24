@@ -220,8 +220,9 @@ fn number(bytes: &[u8]) -> Option<u64> {
     std::str::from_utf8(bytes).ok()?.parse().ok()
 }
 
-/// Value of an active (not `#`) key, for the health checker.
-pub fn active_value(ini: &[u8], section: &str, key: &str) -> Option<u64> {
+/// Value of an active (not `#`) key.
+#[cfg(test)]
+fn active_value(ini: &[u8], section: &str, key: &str) -> Option<u64> {
     let p = parse(ini);
     let e = find(&p, section, key).filter(|e| !e.disabled)?;
     number(&p.lines[e.line][e.value.0..e.value.1])

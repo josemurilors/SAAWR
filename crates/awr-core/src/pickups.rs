@@ -4,9 +4,6 @@
 //!
 //! Each line is `type ammo x y z` (type = the weapon type, not the model ID).
 
-use crate::{error::Result, fsutil};
-use std::path::Path;
-
 const BEGIN: &str = "# AWR-BEGIN (managed by SA-AWR, do not edit)";
 const END: &str = "# AWR-END";
 
@@ -46,16 +43,7 @@ pub type Entry = (u32, Vec<String>);
 /// not the mod's format: it is returned as it is.
 pub fn sync(text: &str, entries: &[Entry]) -> String {
     let eol = if text.contains("\r\n") { "\r\n" } else { "\n" };
-    let mut kept: Vec<&str> = Vec::new();
-    let mut inside = false;
-    for line in text.lines() {
-        match line.trim() {
-            BEGIN => inside = true,
-            END => inside = false,
-            _ if !inside => kept.push(line),
-            _ => {}
-        }
-    }
+    let (kept, had_block) = crate::text::outside_block(text, BEGIN, END);
     let Some(close) = kept.iter().rposition(|l| l.trim() == "}") else {
         return text.to_string();
     };
@@ -68,6 +56,9 @@ pub fn sync(text: &str, entries: &[Entry]) -> String {
             }
         }
     }
+    if block.is_empty() && !had_block {
+        return text.to_string();
+    }
     let mut out: Vec<String> = kept[..close].iter().map(|l| l.to_string()).collect();
     if !block.is_empty() {
         out.push(BEGIN.into());
@@ -78,23 +69,6 @@ pub fn sync(text: &str, entries: &[Entry]) -> String {
     let mut s = out.join(eol);
     s.push_str(eol);
     s
-}
-
-/// Writes the file if the result differs; a missing file means no pickup mod, so nothing to do.
-pub fn sync_file(path: &Path, entries: &[Entry]) -> Result<()> {
-    if !path.is_file() {
-        return Ok(());
-    }
-    let bytes = fsutil::read(path)?;
-    // the file may be CP-1252 (author names); our block is ASCII, so bytes pass through as chars
-    let text: String = bytes.iter().map(|&b| char::from(b)).collect();
-    let new = sync(&text, entries);
-    let new_bytes: Vec<u8> = new.chars().map(|c| c as u8).collect();
-    if new_bytes != bytes {
-        fsutil::backup_once(path)?;
-        fsutil::write_atomic(path, &new_bytes)?;
-    }
-    Ok(())
 }
 
 #[cfg(test)]

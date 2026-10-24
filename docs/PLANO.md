@@ -69,7 +69,7 @@ Ordem (cada passo com teste antes do próximo):
 5. `paths.rs` — `detect_install(hint)`: raiz = pasta com `gta_sa.exe`; `modloader\`;
    FLA = `*fastman92limitAdjuster*.asi` na raiz ou `modloader\*\` (+ `.ini` e `data\`
    ao lado); OLA idem. Teste com árvore fake em `tempfile`.
-6. `config.rs` — `AppSettings { gta_path, id_floor_vehicle, id_floor_weapon }` em
+6. `config.rs` — `AppSettings { gta_path, id_floor_vehicle }` em
    `directories::ProjectDirs::config_dir()/sa-awr.json`.
 7. `meta.rs` + `inventory.rs` — schema §7 sem `enabled/foreign`; `scan()` lê
    `modloader\awr-cars\*` e `awr-weapons\*`; `enabled` = nome sem prefixo `. `;

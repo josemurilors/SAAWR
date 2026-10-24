@@ -1,7 +1,7 @@
 [workspace]
 members = ["crates/*"]
 # awr-desktop needs the built front end (ui/dist), so it is built on purpose: `cargo build -p awr-desktop`
-default-members = ["crates/awr-core", "crates/awr-cli", "crates/awr-app"]
+default-members = ["crates/awr-core", "crates/awr-cli"]
 resolver = "2"
 
 [workspace.package]

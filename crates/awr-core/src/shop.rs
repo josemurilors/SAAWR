@@ -3,8 +3,7 @@
 //! is left alone. Each weapon's name comes from a GXT key (`AWR{type}`) that the weapon's own
 //! `.fxt` defines.
 
-use crate::{error::Result, fsutil, meta::Shop, text::tokens};
-use std::path::Path;
+use crate::{meta::Shop, text::tokens};
 
 const BEGIN: &str = "# AWR-BEGIN (managed by SA-AWR, do not edit)";
 const END: &str = "# AWR-END";
@@ -58,16 +57,7 @@ fn tok(line: &[u8], i: usize) -> Option<String> {
 /// Rewrites `text` so our block lists exactly `entries` (those that fit the mod's limits).
 pub fn sync(text: &str, entries: &[Entry]) -> String {
     let eol = if text.contains("\r\n") { "\r\n" } else { "\n" };
-    let mut kept = Vec::new();
-    let mut inside = false;
-    for line in text.lines() {
-        match line.trim() {
-            BEGIN => inside = true,
-            END => inside = false,
-            _ if !inside => kept.push(line),
-            _ => {}
-        }
-    }
+    let (mut kept, had_block) = crate::text::outside_block(text, BEGIN, END);
     while kept.last().is_some_and(|l| l.trim().is_empty()) {
         kept.pop();
     }
@@ -106,6 +96,9 @@ pub fn sync(text: &str, entries: &[Entry]) -> String {
             s.ammo
         ));
     }
+    if block.is_empty() && !had_block {
+        return text.to_string();
+    }
     let mut out: Vec<String> = kept.iter().map(|l| l.to_string()).collect();
     if !block.is_empty() {
         out.push(String::new());
@@ -116,23 +109,6 @@ pub fn sync(text: &str, entries: &[Entry]) -> String {
     let mut s = out.join(eol);
     s.push_str(eol);
     s
-}
-
-/// Writes the file if the result differs; a missing file means no shop mod, so nothing to do.
-pub fn sync_file(path: &Path, entries: &[Entry]) -> Result<()> {
-    if !path.is_file() {
-        return Ok(());
-    }
-    let bytes = fsutil::read(path)?;
-    // the mod's own file is CP-1252 / ASCII; our block is ASCII, so bytes outside it stay as read
-    let text: String = bytes.iter().map(|&b| char::from(b)).collect();
-    let new = sync(&text, entries);
-    let new_bytes: Vec<u8> = new.chars().map(|c| c as u8).collect();
-    if new_bytes != bytes {
-        fsutil::backup_once(path)?;
-        fsutil::write_atomic(path, &new_bytes)?;
-    }
-    Ok(())
 }
 
 /// How many of `lines` are data lines (used by tests and the CLI report).
@@ -178,6 +154,13 @@ mod tests {
         assert!(!sync(DAT, &[(22, shop(0))]).contains("AWR"));
         let many: Vec<Entry> = (70..100).map(|t| (t, shop(8))).collect();
         assert_eq!(data_lines(&sync(DAT, &many)), 2 + 24);
+    }
+
+    #[test]
+    fn nothing_to_list_leaves_the_file_as_it_is() {
+        let odd = "22\tPISTOL\t0\t0\t0\t200\t30\t111111\r\n\r\n";
+        assert_eq!(sync(odd, &[]), odd);
+        assert_eq!(sync(DAT, &[(22, shop(0))]), DAT, "manual type wins");
     }
 
     #[test]

@@ -35,6 +35,23 @@ pub fn backup_once(path: &Path) -> Result<PathBuf> {
     Ok(bak)
 }
 
+/// Runs another mod's text file through `sync` and writes it back if it changed (with a
+/// `.bak` once). Bytes map 1:1 to chars, so CP-1252 or UTF-8 text outside our ASCII block
+/// comes back unchanged. A missing file means that mod is not installed: nothing to do.
+pub fn sync_mod_file(path: &Path, sync: impl FnOnce(&str) -> String) -> Result<()> {
+    if !path.is_file() {
+        return Ok(());
+    }
+    let bytes = read(path)?;
+    let text: String = bytes.iter().map(|&b| char::from(b)).collect();
+    let new: Vec<u8> = sync(&text).chars().map(|c| c as u8).collect();
+    if new != bytes {
+        backup_once(path)?;
+        write_atomic(path, &new)?;
+    }
+    Ok(())
+}
+
 /// For display and logs only; game files are never written from a String.
 pub fn cp1252_to_string(bytes: &[u8]) -> String {
     encoding_rs::WINDOWS_1252.decode(bytes).0.into_owned()
