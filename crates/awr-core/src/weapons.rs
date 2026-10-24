@@ -554,6 +554,7 @@ impl Injector<'_> {
         io_at(&dest, fs::rename(&stage, &dest))?;
         let _ = fs::remove_dir(ml.join(STAGING));
         self.sync_fla()?;
+        self.sync_trainer()?;
         Ok(dest)
     }
 

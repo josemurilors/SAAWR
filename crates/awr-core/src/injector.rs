@@ -205,6 +205,7 @@ impl Injector<'_> {
         io_at(&dest, fs::rename(&stage, &dest))?;
         let _ = fs::remove_dir(ml.join(STAGING));
         self.sync_fla()?;
+        self.sync_trainer()?;
         Ok(dest)
     }
 
@@ -242,7 +243,7 @@ impl Injector<'_> {
         if enabled {
             self.globals(&new, true)?;
         }
-        Ok(())
+        self.sync_trainer()
     }
 
     /// Folder rename (`. ` prefix) plus the mod's lines in the global files.
@@ -262,6 +263,7 @@ impl Injector<'_> {
         io_at(&new, fs::rename(key, &new))?;
         self.globals(&m, enabled)?;
         self.sync_fla()?;
+        self.sync_trainer()?;
         Ok(new)
     }
 
@@ -270,7 +272,8 @@ impl Injector<'_> {
         let m = self.own_meta(key)?;
         io_at(key, fs::remove_dir_all(key))?;
         self.globals(&m, false)?;
-        self.sync_fla()
+        self.sync_fla()?;
+        self.sync_trainer()
     }
 
     /// Cleans staging leftovers and makes the global files match the folders:
@@ -295,6 +298,7 @@ impl Injector<'_> {
             }
         }
         self.sync_fla()?;
+        self.sync_trainer()?;
         Ok(dropped)
     }
 
@@ -482,6 +486,20 @@ impl Injector<'_> {
             fsutil::write_atomic(&path, &new)?;
         }
         Ok(())
+    }
+
+    /// Lists the enabled weapons in RZL-Trainer's `Add-on Weapons.ini` (no-op without the trainer).
+    pub(crate) fn sync_trainer(&self) -> Result<()> {
+        let Some(ini) = self.info.trainer_ini() else {
+            return Ok(());
+        };
+        let entries: Vec<_> = inventory::scan(&self.modloader()?)
+            .into_iter()
+            .filter(|m| m.enabled)
+            .filter_map(|m| m.meta)
+            .filter_map(|m| (m.kind == ModKind::Weapon).then_some((m.weapon_type_id?, m.name)))
+            .collect();
+        crate::trainer::sync_file(&ini, &entries)
     }
 
     /// Raises the managed FLA limits to what the enabled AWR vehicles need.
@@ -867,6 +885,13 @@ num_colors 1
         };
         let cfg = fla_data.join(crate::weapons::CONFIG);
         let cfg0 = read(&cfg);
+        let trainer = d.path().join("CLEO/RZL-Trainer/Add-on Weapons.ini");
+        fs::create_dir_all(trainer.parent().unwrap()).unwrap();
+        fs::write(
+            &trainer, "; mine
+",
+        )
+        .unwrap();
         let f = d.path().join("gta_sa.exe");
         let req = crate::weapons::InjectWeapon {
             name: "Revolver",
@@ -913,6 +938,11 @@ num_colors 1
             .unwrap();
         assert!(again.to_string_lossy().contains("12401-revolv2"));
 
+        let listed = fs::read_to_string(&trainer).unwrap();
+        assert!(
+            listed.contains("WeaponID     = 70") && listed.contains("= Revolver"),
+            "{listed}"
+        );
         let off = inj.set_enabled(&key, false).unwrap();
         assert!(read(&cfg).len() < cfg1.len());
         assert!(!String::from_utf8_lossy(&read(&cfg)).contains("REVOLVER "));
@@ -921,6 +951,11 @@ num_colors 1
         inj.remove(&on).unwrap();
         inj.remove(&again).unwrap();
         assert_eq!(read(&cfg), cfg0, "config back to the original bytes");
+        assert_eq!(
+            fs::read_to_string(&trainer).unwrap(),
+            "; mine
+"
+        );
     }
 
     #[test]

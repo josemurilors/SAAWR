@@ -21,6 +21,7 @@ pub mod references;
 #[cfg(test)]
 mod testutil;
 pub mod text;
+pub mod trainer;
 pub mod tuning;
 pub mod validators;
 pub mod weapons;

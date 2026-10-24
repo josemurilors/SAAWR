@@ -33,6 +33,11 @@ impl InstallInfo {
             .filter(|p| p.is_dir())
     }
 
+    /// RZL-Trainer's list of added weapons, if the trainer is installed.
+    pub fn trainer_ini(&self) -> Option<PathBuf> {
+        Some(self.root.join("CLEO/RZL-Trainer/Add-on Weapons.ini")).filter(|p| p.is_file())
+    }
+
     pub fn data(&self) -> PathBuf {
         self.root.join("data")
     }
