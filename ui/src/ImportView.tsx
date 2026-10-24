@@ -1,5 +1,6 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { inTauri } from "./api";
+import { t } from "./i18n";
 import { Close, Folder, KindIcon, Upload, WEAPON_CLASS_LABEL, kindOf, weaponClass } from "./Icons";
 import { HudPreview } from "./Plate";
 import type { GameDto, QItem, Special, TrafficChoice } from "./types";
@@ -39,12 +40,12 @@ export function parseTraffic(v: string): TrafficChoice {
 export function ImportView(p: Props) {
   const pickFolders = async () => {
     if (!inTauri) return p.onMockDrop?.();
-    p.onAddPaths(asList(await open({ directory: true, multiple: true, title: "Pasta do mod (ou de vários)" })));
+    p.onAddPaths(asList(await open({ directory: true, multiple: true, title: t("Pasta do mod (ou de vários)") })));
   };
   const pickFiles = async () => {
     if (!inTauri) return p.onMockDrop?.();
     p.onAddPaths(
-      asList(await open({ multiple: true, title: ".dff + .txd", filters: [{ name: "Modelo e textura", extensions: ["dff", "txd"] }] })),
+      asList(await open({ multiple: true, title: ".dff + .txd", filters: [{ name: t("Modelo e textura"), extensions: ["dff", "txd"] }] })),
     );
   };
 
@@ -53,19 +54,19 @@ export function ImportView(p: Props) {
 
   return (
     <div className="page">
-      <h2>Importar</h2>
-      <div className="sub">Solte a pasta de um mod, uma pasta com vários, ou os arquivos .dff e .txd. O nome vem da pasta e a referência vem do nome do .dff.</div>
+      <h2>{t("Importar")}</h2>
+      <div className="sub">{t("Solte a pasta de um mod, uma pasta com vários, ou os arquivos .dff e .txd. O nome vem da pasta e a referência vem do nome do .dff.")}</div>
 
       <div className={`dropzone ${hasQueue ? "compact" : ""} ${p.dragging ? "over" : ""}`}>
         <Upload className="hero" />
-        <div className="big">{hasQueue ? "Solte mais mods aqui" : "Arraste a pasta do mod para cá"}</div>
-        {hasQueue ? <div className="hint" /> : <div className="hint">Funciona com a pasta de um mod, com uma pasta de vários, ou com .dff + .txd soltos.</div>}
+        <div className="big">{hasQueue ? t("Solte mais mods aqui") : t("Arraste a pasta do mod para cá")}</div>
+        {hasQueue ? <div className="hint" /> : <div className="hint">{t("Funciona com a pasta de um mod, com uma pasta de vários, ou com .dff + .txd soltos.")}</div>}
         <div className="row" style={{ justifyContent: "center" }}>
           <button className="btn" onClick={pickFolders}>
-            <Folder /> Escolher pasta
+            <Folder /> {t("Escolher pasta")}
           </button>
           <button className="btn" onClick={pickFiles}>
-            Escolher arquivos
+            {t("Escolher arquivos")}
           </button>
         </div>
       </div>
@@ -73,12 +74,12 @@ export function ImportView(p: Props) {
       {hasQueue && (
         <>
           <div className="listhead">
-            <h3>Fila</h3>
+            <h3>{t("Fila")}</h3>
             <span className="meta">
-              {p.queue.length} item(ns) · {ready} pronto(s) para injetar
+              {t("{n} item(ns) · {ready} pronto(s) para injetar", { n: p.queue.length, ready })}
             </span>
             <button className="btn quiet small" onClick={p.onClear}>
-              Limpar fila
+              {t("Limpar fila")}
             </button>
           </div>
           <div className="queue">
@@ -88,7 +89,7 @@ export function ImportView(p: Props) {
           </div>
           <div className="actionbar">
             <button className="btn primary" disabled={ready === 0 || p.busy} onClick={p.onInject}>
-              {p.busy ? "Injetando…" : `Injetar ${ready} no jogo`}
+              {p.busy ? t("Injetando…") : t("Injetar {n} no jogo", { n: ready })}
             </button>
           </div>
         </>
@@ -115,13 +116,13 @@ function QueueRow({ item, game, problem, p }: { item: QItem; game: GameDto | nul
       </div>
       <div className="qbody">
         <div className="line">
-          <input type="checkbox" checked={item.include} onChange={(e) => patch({ include: e.target.checked })} aria-label="Injetar este item" style={{ marginBottom: 9 }} />
+          <input type="checkbox" checked={item.include} onChange={(e) => patch({ include: e.target.checked })} aria-label={t("Injetar este item")} style={{ marginBottom: 9 }} />
           <label className="fl">
-            Nome no jogo
+            {t("Nome no jogo")}
             <input type="text" value={item.name} onChange={(e) => p.onRename(item.id, e.target.value)} style={{ minWidth: 260 }} />
           </label>
           <label className="fl">
-            Nome curto
+            {t("Nome curto")}
             <input
               type="text"
               value={item.short}
@@ -133,25 +134,25 @@ function QueueRow({ item, game, problem, p }: { item: QItem; game: GameDto | nul
             />
           </label>
           <div className="spacer" />
-          <button className="btn quiet small" title="Tirar da fila" onClick={() => p.onRemove(item.id)}>
+          <button className="btn quiet small" title={t("Tirar da fila")} onClick={() => p.onRemove(item.id)}>
             <Close />
           </button>
         </div>
         <HudPreview name={item.name} />
 
         <div className="line">
-          <div className="seg" role="group" aria-label="Tipo">
+          <div className="seg" role="group" aria-label={t("Tipo")}>
             <button className={!item.weapon ? "on" : ""} onClick={() => item.weapon && patch({ weapon: false, reference: "" })}>
-              Veículo
+              {t("Veículo")}
             </button>
             <button className={item.weapon ? "on" : ""} onClick={() => item.weapon || patch({ weapon: true, reference: "" })}>
-              Arma
+              {t("Arma")}
             </button>
           </div>
           <label className="fl">
-            Baseado em
+            {t("Baseado em")}
             <select value={item.reference} onChange={(e) => patch({ reference: e.target.value })}>
-              <option value="">escolha…</option>
+              <option value="">{t("escolha…")}</option>
               {item.weapon
                 ? game?.weapons.map((w) => (
                     <option key={w.name} value={w.name}>
@@ -167,9 +168,9 @@ function QueueRow({ item, game, problem, p }: { item: QItem; game: GameDto | nul
           </label>
           {item.weapon && item.special === "none" && (
             <label className="fl">
-              Som e comportamento iguais a
+              {t("Som e comportamento iguais a")}
               <select value={item.soundLike} onChange={(e) => patch({ soundLike: e.target.value })}>
-                <option value="">a referência</option>
+                <option value="">{t("a referência")}</option>
                 {game?.weapons.map((w) => (
                   <option key={w.name} value={w.name}>
                     {w.name}
@@ -180,21 +181,21 @@ function QueueRow({ item, game, problem, p }: { item: QItem; game: GameDto | nul
           )}
           {item.weapon ? (
             <label className="fl">
-              Comportamento especial
+              {t("Comportamento especial")}
               <select value={item.special} onChange={(e) => setSpecial(e.target.value as Special)}>
                 {SPECIALS.map((s) => (
                   <option key={s.value} value={s.value}>
-                    {s.label}
+                    {t(s.label)}
                   </option>
                 ))}
               </select>
             </label>
           ) : (
             <label className="fl">
-              Aparece no tráfego
+              {t("Aparece no tráfego")}
               <select value={trafficValue(item.traffic)} onChange={(e) => patch({ traffic: parseTraffic(e.target.value) })}>
-                <option value="auto">como o veículo de referência</option>
-                <option value="none">em nenhum grupo</option>
+                <option value="auto">{t("como o veículo de referência")}</option>
+                <option value="none">{t("em nenhum grupo")}</option>
                 {game?.groups.map((g) => (
                   <option key={g.index} value={`group:${g.index}`}>
                     {g.label}
@@ -204,31 +205,31 @@ function QueueRow({ item, game, problem, p }: { item: QItem; game: GameDto | nul
             </label>
           )}
         </div>
-        {item.weapon && hint && <div className="meta">{hint}</div>}
+        {item.weapon && hint && <div className="meta">{t(hint)}</div>}
 
         <div className="opts">
           {!item.weapon && item.extras.handling && (
             <label>
               <input type="checkbox" checked={item.useHandling} onChange={(e) => patch({ useHandling: e.target.checked })} />
-              Usar o handling do pacote
+              {t("Usar o handling do pacote")}
             </label>
           )}
           {item.weapon && item.extras.weaponLines && (
             <label>
               <input type="checkbox" checked={item.useHandling} onChange={(e) => patch({ useHandling: e.target.checked })} />
-              Usar as linhas de arma do pacote
+              {t("Usar as linhas de arma do pacote")}
             </label>
           )}
           {item.extras.cleo && (
             <label>
               <input type="checkbox" checked={item.useCleo} onChange={(e) => patch({ useCleo: e.target.checked })} />
-              Copiar scripts CLEO
+              {t("Copiar scripts CLEO")}
             </label>
           )}
           {!item.weapon && (
             <label>
               <input type="checkbox" checked={item.audio} onChange={(e) => patch({ audio: e.target.checked })} />
-              Clonar o som do motor
+              {t("Clonar o som do motor")}
             </label>
           )}
         </div>
@@ -239,15 +240,15 @@ function QueueRow({ item, game, problem, p }: { item: QItem; game: GameDto | nul
           <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
             {item.weapon ? (
               <>
-                <span className="chip accent">{WEAPON_CLASS_LABEL[weaponClass(item.reference)]}</span>
-                <span className="chip">o ícone do HUD é renomeado sozinho</span>
+                <span className="chip accent">{t(WEAPON_CLASS_LABEL[weaponClass(item.reference)])}</span>
+                <span className="chip">{t("o ícone do HUD é renomeado sozinho")}</span>
               </>
             ) : (
               <>
-                {item.extras.parts && <span className="chip accent">peças de tuning</span>}
-                {item.extras.paintjobs && <span className="chip accent">paintjobs</span>}
-                {item.extras.ivfc && <span className="chip accent">cores IVF</span>}
-                {!item.extras.parts && !item.extras.paintjobs && !item.extras.ivfc && <span className="chip">só modelo e textura</span>}
+                {item.extras.parts && <span className="chip accent">{t("peças de tuning")}</span>}
+                {item.extras.paintjobs && <span className="chip accent">{t("paintjobs")}</span>}
+                {item.extras.ivfc && <span className="chip accent">{t("cores IVF")}</span>}
+                {!item.extras.parts && !item.extras.paintjobs && !item.extras.ivfc && <span className="chip">{t("só modelo e textura")}</span>}
               </>
             )}
             <span className="chip" title={item.folder}>

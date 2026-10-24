@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
+import { t } from "./i18n";
 
 interface PlateProps {
   /** Vehicles show the model ID; weapons show the weapon type (what trainers ask for). */
@@ -14,9 +15,9 @@ export function Plate({ value, weapon, big, dim }: PlateProps) {
   return (
     <span
       className={`plate ${weapon ? "weapon" : ""} ${big ? "big" : ""} ${dim ? "dim" : ""}`}
-      title={weapon ? "Tipo da arma: é este número que vai em trainers e scripts" : "ID do modelo"}
+      title={weapon ? t("Tipo da arma: é este número que vai em trainers e scripts") : t("ID do modelo")}
     >
-      <span className="top">{weapon ? "tipo" : "Los Santos"}</span>
+      <span className="top">{weapon ? t("tipo") : "Los Santos"}</span>
       <span className="num">{value}</span>
     </span>
   );
@@ -32,8 +33,8 @@ export function HudPreview({ name }: { name: string }) {
   const changed = hud !== name.trim().replace(/\s+/g, " ");
   return (
     <div className="meta">
-      No jogo aparece: <strong style={{ color: "var(--chalk)", fontWeight: 600 }}>{hud || "(vazio)"}</strong>
-      {changed && " · acentos, símbolos ou tamanho foram ajustados para o jogo"}
+      {t("No jogo aparece: ")}<strong style={{ color: "var(--chalk)", fontWeight: 600 }}>{hud || t("(vazio)")}</strong>
+      {changed && t(" · acentos, símbolos ou tamanho foram ajustados para o jogo")}
     </div>
   );
 }

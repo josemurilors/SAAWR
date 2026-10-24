@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { api, errorText, inTauri } from "./api";
+import { getLang, setLang, t, type Lang } from "./i18n";
 import { ImportView } from "./ImportView";
 import { InstalledView } from "./InstalledView";
 import { TopBar, type Tab } from "./TopBar";
@@ -31,6 +32,11 @@ export function App() {
   const [log, setLog] = useState<string[]>([]);
   const [showLog, setShowLog] = useState(false);
   const toastId = useRef(0);
+  const [lang, setLangState] = useState<Lang>(getLang());
+  const onLang = (l: Lang) => {
+    setLang(l);
+    setLangState(l);
+  };
 
   const say = useCallback((text: string, bad = false) => {
     setLog((l) => [...l.slice(-199), `${new Date().toLocaleTimeString()}  ${text}`]);
@@ -52,10 +58,10 @@ export function App() {
       if (!paths.length) return;
       try {
         const items = await api.scanPaths(paths);
-        if (!items.length) return say("Nada reconhecido: precisa de uma pasta com .dff e .txd.", true);
+        if (!items.length) return say(t("Nada reconhecido: precisa de uma pasta com .dff e .txd."), true);
         setQueue((q) => [...q, ...items.map(toQueueItem)]);
         setTab("import");
-        say(`${items.length} item(ns) na fila`);
+        say(t("{n} item(ns) na fila", { n: items.length }));
       } catch (e) {
         say(errorText(e), true);
       }
@@ -118,7 +124,7 @@ export function App() {
   const openGame = async (path: string) => {
     try {
       setSnap(await api.openGame(path));
-      say("GTA SA aberto");
+      say(t("GTA SA aberto"));
     } catch (e) {
       say(errorText(e), true);
     }
@@ -141,7 +147,7 @@ export function App() {
       for (const r of results.filter((r) => !r.ok)) {
         say(`${todo.find((i) => i.id === r.id)?.name ?? r.id}: ${r.message}`, true);
       }
-      if (ok.length) say(`${ok.length} injetado(s) no jogo`);
+      if (ok.length) say(t("{n} injetado(s) no jogo", { n: ok.length }));
       await refresh();
     } catch (e) {
       say(errorText(e), true);
@@ -163,7 +169,7 @@ export function App() {
   const onEdit = async (m: ModDto, name: string, traffic: TrafficChoice | null, audio: boolean | null) => {
     try {
       await api.editMod(m.key, name, traffic, audio);
-      say(`${name}: alterações salvas`);
+      say(t("{name}: alterações salvas", { name }));
       await refresh();
       return true;
     } catch (e) {
@@ -171,23 +177,23 @@ export function App() {
       return false;
     }
   };
-  const onToggle = (m: ModDto) => run(() => api.setEnabled(m.key, !m.enabled), `${m.name}: ${m.enabled ? "desligado" : "ligado"}`);
-  const onRemove = (m: ModDto) => run(() => api.remove(m.key), `${m.name} removido`);
-  const onRepair = () => run(() => api.repair(), "Instalação reparada");
+  const onToggle = (m: ModDto) => run(() => api.setEnabled(m.key, !m.enabled), `${m.name}: ${t(m.enabled ? "desligado" : "ligado")}`);
+  const onRemove = (m: ModDto) => run(() => api.remove(m.key), t("{name} removido", { name: m.name }));
+  const onRepair = () => run(() => api.repair(), t("Instalação reparada"));
   const onRestore = () => {
-    if (window.confirm("Apagar TODOS os mods do AWR e restaurar os arquivos do jogo para os originais (.bak)?"))
-      run(() => api.restore(), "Instalação restaurada");
+    if (window.confirm(t("Apagar TODOS os mods do AWR e restaurar os arquivos do jogo para os originais (.bak)?")))
+      run(() => api.restore(), t("Instalação restaurada"));
   };
   const onCopy = (text: string) => {
     navigator.clipboard?.writeText(text);
-    say(`Copiado: ${text}`);
+    say(t("Copiado: {text}", { text }));
   };
 
-  const last = log[log.length - 1] ?? "pronto";
+  const last = log[log.length - 1] ?? t("pronto");
   return (
     <div className="app">
-      {!inTauri && <div className="mockbar">pré-visualização no navegador · dados de exemplo</div>}
-      <TopBar tab={tab} onTab={setTab} snap={snap} onOpenGame={openGame} onRepair={onRepair} onRestore={onRestore} />
+      {!inTauri && <div className="mockbar">{t("pré-visualização no navegador · dados de exemplo")}</div>}
+      <TopBar tab={tab} onTab={setTab} snap={snap} onOpenGame={openGame} onRepair={onRepair} onRestore={onRestore} lang={lang} onLang={onLang} />
       <main className="content" key={tab}>
         {tab === "import" ? (
           <ImportView
@@ -211,7 +217,7 @@ export function App() {
       <footer className="footer">
         <span className={`last ${last.includes("rro") ? "bad" : ""}`}>{last}</span>
         <button className="btn ghost small" onClick={() => setShowLog((s) => !s)}>
-          Log
+          {t("Log")}
         </button>
       </footer>
 
@@ -220,12 +226,12 @@ export function App() {
           {[...log].reverse().map((l, i) => (
             <div key={i}>{l}</div>
           ))}
-          {!log.length && "sem mensagens"}
+          {!log.length && t("sem mensagens")}
         </div>
       )}
       {dragging && (
         <div className="drop-overlay">
-          <div>Solte para adicionar à fila</div>
+          <div>{t("Solte para adicionar à fila")}</div>
         </div>
       )}
       <div className="toasts">

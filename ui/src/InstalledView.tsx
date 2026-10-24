@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { t } from "./i18n";
 import { parseTraffic, trafficValue } from "./ImportView";
 import { Copy, FAMILY_LABEL, KindIcon, Trash, WEAPON_CLASS_LABEL, familyOf, kindOf, weaponClass, type Family } from "./Icons";
 import { HudPreview, Plate } from "./Plate";
@@ -41,24 +42,24 @@ export function InstalledView({ mods, game, onToggle, onRemove, onCopy, onEdit }
     <div className="split">
       <div className="main">
         <div className="page">
-          <h2>Instalados</h2>
-          <div className="sub">Clique em um item para editar. O interruptor liga e desliga sem apagar nada; mods de terceiros ficam esmaecidos e não são alterados.</div>
+          <h2>{t("Instalados")}</h2>
+          <div className="sub">{t("Clique em um item para editar. O interruptor liga e desliga sem apagar nada; mods de terceiros ficam esmaecidos e não são alterados.")}</div>
           <div className="toolbar">
-            <input className="field-input" placeholder="Buscar pelo nome" value={text} onChange={(e) => setText(e.target.value)} aria-label="Buscar pelo nome" />
-            <div className="seg" role="group" aria-label="Tipo">
+            <input className="field-input" placeholder={t("Buscar pelo nome")} value={text} onChange={(e) => setText(e.target.value)} aria-label={t("Buscar pelo nome")} />
+            <div className="seg" role="group" aria-label={t("Tipo")}>
               <button className={family === null ? "on" : ""} onClick={() => setFamily(null)}>
-                Todos
+                {t("Todos")}
               </button>
               {FAMILIES.map((k) => (
                 <button key={k} className={family === k ? "on" : ""} onClick={() => setFamily(k)}>
-                  {FAMILY_LABEL[k]}
+                  {t(FAMILY_LABEL[k])}
                 </button>
               ))}
             </div>
           </div>
 
           {shown.length === 0 ? (
-            <div className="empty">{mods.length ? "Nada com esse filtro." : "Nada instalado ainda. Vá em Importar e solte a pasta de um mod."}</div>
+            <div className="empty">{mods.length ? t("Nada com esse filtro.") : t("Nada instalado ainda. Vá em Importar e solte a pasta de um mod.")}</div>
           ) : (
             <div className="list">
               {shown.map((m) => (
@@ -96,7 +97,7 @@ function Row({ m, selected, onSelect, onToggle }: { m: ModDto; selected: boolean
         </div>
         <div className="ibody">
           <div className="name">{m.name}</div>
-          <div className="meta">mod de terceiro · a ferramenta não mexe</div>
+          <div className="meta">{t("mod de terceiro · a ferramenta não mexe")}</div>
         </div>
       </div>
     );
@@ -117,21 +118,21 @@ function Row({ m, selected, onSelect, onToggle }: { m: ModDto; selected: boolean
         <div className="name">{m.name}</div>
         <div className="pills">
           {weapon ? (
-            <span className="chip accent">{WEAPON_CLASS_LABEL[weaponClass(m.reference)]}</span>
+            <span className="chip accent">{t(WEAPON_CLASS_LABEL[weaponClass(m.reference)])}</span>
           ) : (
             <>
-              {m.parts > 0 && <span className="chip accent">tuning {m.parts}</span>}
-              {m.paintjobs > 0 && <span className="chip accent">paintjobs {m.paintjobs}</span>}
-              {m.ivfc && <span className="chip accent">cores IVF</span>}
-              {m.packHandling && <span className="chip accent">handling do pacote</span>}
+              {m.parts > 0 && <span className="chip accent">{t("tuning {n}", { n: m.parts })}</span>}
+              {m.paintjobs > 0 && <span className="chip accent">{t("paintjobs {n}", { n: m.paintjobs })}</span>}
+              {m.ivfc && <span className="chip accent">{t("cores IVF")}</span>}
+              {m.packHandling && <span className="chip accent">{t("handling do pacote")}</span>}
             </>
           )}
-          <span className="chip">baseado em {weapon ? m.reference : m.reference.toLowerCase()}</span>
+          <span className="chip">{t("baseado em {ref}", { ref: weapon ? m.reference : m.reference.toLowerCase() })}</span>
         </div>
       </div>
       <Plate value={weapon ? (m.weaponTypeId ?? "") : (m.id ?? "")} weapon={weapon} dim={!m.enabled} />
-      <label className="switch" title={m.enabled ? "Desligar" : "Ligar"} onClick={(e) => e.stopPropagation()}>
-        <input type="checkbox" checked={m.enabled} onChange={() => onToggle(m)} aria-label={m.enabled ? "Desligar" : "Ligar"} />
+      <label className="switch" title={m.enabled ? t("Desligar") : t("Ligar")} onClick={(e) => e.stopPropagation()}>
+        <input type="checkbox" checked={m.enabled} onChange={() => onToggle(m)} aria-label={m.enabled ? t("Desligar") : t("Ligar")} />
         <span />
       </label>
     </div>
@@ -164,24 +165,28 @@ function EditSheet({ m, game, onClose, onRemove, onCopy, onEdit }: SheetProps) {
   };
 
   return (
-    <aside className="sheet" aria-label={`Editar ${m.name}`}>
+    <aside className="sheet" aria-label={t("Editar {name}", { name: m.name })}>
       <div className="head">
         <Plate value={weapon ? (m.weaponTypeId ?? "") : (m.id ?? "")} weapon={weapon} big dim={!m.enabled} />
         <div className="spacer" />
-        <button className="btn quiet small" onClick={onClose} aria-label="Fechar">
-          Fechar
+        <button className="btn quiet small" onClick={onClose} aria-label={t("Fechar")}>
+          {t("Fechar")}
         </button>
       </div>
       <div>
         <h3>{m.name}</h3>
         <div className="meta">
-          {weapon ? `arma · ${WEAPON_CLASS_LABEL[weaponClass(m.reference)]}` : `${m.vehicleType ?? "carro"}`} · baseado em {m.reference} · arquivo {m.short}
-          {!m.enabled && " · desligado"}
+          {t("{kind} · baseado em {ref} · arquivo {short}", {
+            kind: weapon ? t("arma · {cls}", { cls: t(WEAPON_CLASS_LABEL[weaponClass(m.reference)]) }) : (m.vehicleType ?? t("carro")),
+            ref: m.reference,
+            short: m.short,
+          })}
+          {!m.enabled && t(" · desligado")}
         </div>
       </div>
 
       <label className="fl">
-        {weapon ? "Nome da arma" : "Nome no jogo"}
+        {weapon ? t("Nome da arma") : t("Nome no jogo")}
         <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
       </label>
       {!weapon && <HudPreview name={name} />}
@@ -189,10 +194,10 @@ function EditSheet({ m, game, onClose, onRemove, onCopy, onEdit }: SheetProps) {
       {!weapon && (
         <>
           <label className="fl">
-            Aparece no tráfego
+            {t("Aparece no tráfego")}
             <select value={trafficValue(traffic)} onChange={(e) => setTraffic(parseTraffic(e.target.value))}>
-              <option value="auto">como o veículo de referência</option>
-              <option value="none">em nenhum grupo</option>
+              <option value="auto">{t("como o veículo de referência")}</option>
+              <option value="none">{t("em nenhum grupo")}</option>
               {game?.groups.map((g) => (
                 <option key={g.index} value={`group:${g.index}`}>
                   {g.label}
@@ -202,23 +207,24 @@ function EditSheet({ m, game, onClose, onRemove, onCopy, onEdit }: SheetProps) {
           </label>
           <label className="check">
             <input type="checkbox" checked={audio} onChange={(e) => setAudio(e.target.checked)} />
-            Clonar o som do motor
+            {t("Clonar o som do motor")}
           </label>
         </>
       )}
 
       {weapon && (
         <div className="note">
-          Em trainers e scripts use o tipo <strong style={{ color: "var(--chalk)" }}>{m.weaponTypeId}</strong>, não o ID do modelo ({m.id}).{" "}
+          {t("Em trainers e scripts use o tipo")} <strong style={{ color: "var(--chalk)" }}>{m.weaponTypeId}</strong>
+          {t(", não o ID do modelo ({id}).", { id: m.id ?? "" })}{" "}
           <button className="btn quiet small" onClick={() => onCopy(String(m.weaponTypeId))}>
-            <Copy /> Copiar o tipo
+            <Copy /> {t("Copiar o tipo")}
           </button>
         </div>
       )}
 
       <div className="actions">
         <button className="btn primary" disabled={!dirty || saving || !name.trim()} onClick={save}>
-          {saving ? "Salvando…" : "Salvar alterações"}
+          {saving ? t("Salvando…") : t("Salvar alterações")}
         </button>
         <button
           className="btn quiet"
@@ -229,25 +235,25 @@ function EditSheet({ m, game, onClose, onRemove, onCopy, onEdit }: SheetProps) {
             setAudio(m.audio);
           }}
         >
-          Desfazer
+          {t("Desfazer")}
         </button>
       </div>
-      {!weapon && <div className="note">Peças, paintjobs e o modelo não mudam aqui. Para trocar o modelo, exclua e importe de novo.</div>}
+      {!weapon && <div className="note">{t("Peças, paintjobs e o modelo não mudam aqui. Para trocar o modelo, exclua e importe de novo.")}</div>}
 
       <hr />
       <div className="actions">
         {confirm ? (
           <>
             <button className="btn danger fill" onClick={() => onRemove(m)}>
-              Excluir de vez
+              {t("Excluir de vez")}
             </button>
             <button className="btn quiet" onClick={() => setConfirm(false)}>
-              Manter
+              {t("Manter")}
             </button>
           </>
         ) : (
           <button className="btn danger" onClick={() => setConfirm(true)}>
-            <Trash /> Excluir {weapon ? "a arma" : "o veículo"}
+            <Trash /> {weapon ? t("Excluir a arma") : t("Excluir o veículo")}
           </button>
         )}
       </div>
