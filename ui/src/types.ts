@@ -63,6 +63,8 @@ export interface QItem extends ItemDto {
   /** The user typed the short himself: stop suggesting it from the name. */
   shortEdited: boolean;
   special: Special;
+  /** Weapons: inherit sound/behavior from this weapon ("" = the reference). */
+  soundLike: string;
   include: boolean;
   traffic: TrafficChoice;
   audio: boolean;
@@ -80,6 +82,7 @@ export interface InjectRequest {
   useHandling: boolean;
   useCleo: boolean;
   special: Special | null;
+  soundLike: string | null;
 }
 export interface InjectResult { id: number; ok: boolean; message: string }
 export interface Problem { id: number; problem: string | null }

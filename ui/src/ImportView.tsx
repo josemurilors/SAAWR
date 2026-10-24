@@ -165,6 +165,19 @@ function QueueRow({ item, game, problem, p }: { item: QItem; game: GameDto | nul
                   ))}
             </select>
           </label>
+          {item.weapon && item.special === "none" && (
+            <label className="fl">
+              Som e comportamento iguais a
+              <select value={item.soundLike} onChange={(e) => patch({ soundLike: e.target.value })}>
+                <option value="">a referência</option>
+                {game?.weapons.map((w) => (
+                  <option key={w.name} value={w.name}>
+                    {w.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           {item.weapon ? (
             <label className="fl">
               Comportamento especial

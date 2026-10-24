@@ -1065,6 +1065,7 @@ num_colors 1
             created: "2026-10-23T00:00:00Z",
             own: None,
             special: crate::weapons::Special::None,
+            sound_like: None,
             cleo: Some(&scripts),
         };
         let key = inj.inject_weapon(&req).unwrap();
@@ -1098,9 +1099,20 @@ num_colors 1
         let again = inj
             .inject_weapon(&crate::weapons::InjectWeapon {
                 short: "revolv2",
+                sound_like: Some("ak47"),
                 ..req
             })
             .unwrap();
+        let both = String::from_utf8_lossy(&read(&cfg)).into_owned();
+        let line = both.lines().find(|l| l.contains("REVOLV2")).unwrap();
+        assert!(line.trim_end().ends_with("AK47"), "{line}");
+        assert!(inj
+            .inject_weapon(&crate::weapons::InjectWeapon {
+                short: "revolv3",
+                sound_like: Some("NOPE"),
+                ..req
+            })
+            .is_err());
         assert!(again.to_string_lossy().contains("12401-revolv2"));
 
         let listed = fs::read_to_string(&trainer).unwrap();

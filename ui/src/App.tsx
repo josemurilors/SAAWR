@@ -12,6 +12,7 @@ const toQueueItem = (i: ItemDto): QItem => ({
   ...i,
   shortEdited: false,
   special: "none",
+  soundLike: "",
   include: true,
   traffic: { kind: "auto" },
   audio: true,
@@ -132,6 +133,7 @@ export function App() {
           id: i.id, name: i.name, short: i.short, reference: i.reference, weapon: i.weapon,
           traffic: i.traffic, audio: i.audio, useHandling: i.useHandling, useCleo: i.useCleo,
           special: i.weapon && i.special !== "none" ? i.special : null,
+          soundLike: i.weapon && i.special === "none" && i.soundLike ? i.soundLike : null,
         })),
       );
       const ok = results.filter((r) => r.ok).map((r) => r.id);

@@ -17,7 +17,7 @@ const USAGE: &str = "uso: awr-cli <comando> [--gta <pasta do GTA SA>]
          [--paintjobs <pasta>] [--parts <pasta>] [--ivfc <arq>] [--short <nome curto>] [--traffic auto|none|<n° do grupo>] [--no-audio] [--no-pack-handling] [--cleo]
   groups
   weapons
-  inject-weapon --short <nome> --ref <ARMA, ex. DESERT_EAGLE> (--pack <pasta> | --dff <arq> --txd <arq>) [--no-pack-lines] [--special silencer|jetpack|binoculars] [--cleo]
+  inject-weapon --short <nome> --ref <ARMA, ex. DESERT_EAGLE> (--pack <pasta> | --dff <arq> --txd <arq>) [--no-pack-lines] [--special silencer|jetpack|binoculars] [--sound-like <ARMA>] [--cleo]
   batch <pasta com subpastas> [--ref <modelo padrão>] [--yes]
   enable <pasta do mod>
   disable <pasta do mod>
@@ -203,6 +203,7 @@ fn run(args: &[String]) -> Result<(), String> {
                     reference,
                     created: &meta::rfc3339(secs),
                     special: Special::parse(opt(args, "--special").unwrap_or_default()),
+                    sound_like: opt(args, "--sound-like"),
                     own: found
                         .weapon
                         .as_ref()

@@ -283,13 +283,7 @@ pub fn config_lines(
     };
     // a special weapon's parent decides what it is (silencer, jetpack, binoculars)
     let main = match special.parent() {
-        Some(p) => {
-            let t = tokens(&main);
-            match t.get(10) {
-                Some(&parent) => replace_spans(&main, &[(parent, p.as_bytes())]),
-                None => [main.trim_ascii_end(), b" ", p.as_bytes()].concat(),
-            }
-        }
+        Some(p) => set_parent(&main, p),
         None => main,
     };
     let mut out = vec![main];
@@ -299,6 +293,14 @@ pub fn config_lines(
             .map(|a| replace_spans(a, &[(tokens(a)[2], name.as_bytes())])),
     );
     out
+}
+
+/// The config line with its `parentWeaponType` column (the 11th) set to `parent`.
+pub fn set_parent(line: &[u8], parent: &str) -> Vec<u8> {
+    match tokens(line).get(10) {
+        Some(&p) => replace_spans(line, &[(p, parent.as_bytes())]),
+        None => [line.trim_ascii_end(), b" ", parent.as_bytes()].concat(),
+    }
 }
 
 /// Appends the lines at the end, as the tutorial says. No-op if the name is already there.
@@ -394,6 +396,9 @@ pub struct InjectWeapon<'a> {
     /// The pack author's weapon lines, used instead of copies of the reference's.
     pub own: Option<&'a FoundWeapon>,
     pub special: Special,
+    /// Weapon whose behavior the new one inherits (sound, animation, fire type), instead of the
+    /// reference's; ignored for special weapons, whose parent is fixed.
+    pub sound_like: Option<&'a str>,
     /// `CLEO` folder whose files are copied into the mod's own `cleo/` folder.
     pub cleo: Option<&'a Path>,
 }
@@ -501,6 +506,15 @@ impl Injector<'_> {
         if dest.exists() {
             return Err(AwrError::AlreadyExists { path: dest });
         }
+        let sound_like = match req.sound_like.filter(|_| req.special == Special::None) {
+            Some(n) => Some(
+                self.weapons
+                    .iter()
+                    .find(|w| w.name.eq_ignore_ascii_case(n))
+                    .ok_or_else(|| AwrError::InvalidName(format!("arma desconhecida: {n}")))?,
+            ),
+            None => None,
+        };
         let name = req.short.to_ascii_uppercase();
         let m = Meta {
             v: 1,
@@ -526,10 +540,13 @@ impl Injector<'_> {
             },
             parts: vec![],
             pack_handling: false,
-            weapon_config: config_lines(r, req.own, req.special, &name, type_id)
-                .iter()
-                .map(|l| fsutil::cp1252_to_string(l))
-                .collect(),
+            weapon_config: {
+                let mut lines = config_lines(r, req.own, req.special, &name, type_id);
+                if let Some(p) = &sound_like {
+                    lines[0] = set_parent(&lines[0], &p.name);
+                }
+                lines.iter().map(|l| fsutil::cp1252_to_string(l)).collect()
+            },
         };
 
         let stage = ml.join(STAGING).join(&folder);
@@ -613,6 +630,18 @@ mod tests {
         assert_eq!((d.model.as_str(), d.model_id), ("desert_eagle", 348));
         assert!(d.object_line.is_some() && r[0].object_line.is_none());
         assert_eq!(d.associated.len(), 1);
+    }
+
+    #[test]
+    fn set_parent_replaces_or_appends_the_last_column() {
+        assert_eq!(
+            set_parent(b"70 X 1 0 0 1 2 3 4 1.0 PISTOL", "AK47"),
+            b"70 X 1 0 0 1 2 3 4 1.0 AK47"
+        );
+        assert_eq!(
+            set_parent(b"70 X 1 0 0 1 2 3 4 1.0  ", "AK47"),
+            b"70 X 1 0 0 1 2 3 4 1.0 AK47"
+        );
     }
 
     #[test]

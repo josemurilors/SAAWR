@@ -182,6 +182,8 @@ struct InjectRequest {
     use_cleo: bool,
     /// Weapons: "silencer", "jetpack" or "binoculars".
     special: Option<String>,
+    /// Weapons: weapon (by `weapon.dat` name) whose sound and behavior to inherit.
+    sound_like: Option<String>,
 }
 
 // ---- helpers --------------------------------------------------------------------------
@@ -548,6 +550,7 @@ async fn inject(
                 created: &created,
                 own: c.files.weapon.as_ref().filter(|_| r.use_handling),
                 special: Special::parse(r.special.as_deref().unwrap_or_default()),
+                sound_like: r.sound_like.as_deref().filter(|s| !s.is_empty()),
                 cleo: c.files.cleo.as_deref().filter(|_| r.use_cleo),
             })
         } else {
