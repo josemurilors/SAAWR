@@ -289,6 +289,7 @@ impl App {
                             created: &meta::rfc3339(secs),
                             own: item.files.weapon.as_ref().filter(|_| item.use_handling),
                             special: Special::None,
+                            cleo: None,
                         });
                         match &res {
                             Ok(k) => logs.push(format!("injetada: {}", k.display())),

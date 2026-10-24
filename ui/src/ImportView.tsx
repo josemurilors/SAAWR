@@ -206,7 +206,7 @@ function QueueRow({ item, game, problem, p }: { item: QItem; game: GameDto | nul
               Usar as linhas de arma do pacote
             </label>
           )}
-          {!item.weapon && item.extras.cleo && (
+          {item.extras.cleo && (
             <label>
               <input type="checkbox" checked={item.useCleo} onChange={(e) => patch({ useCleo: e.target.checked })} />
               Copiar scripts CLEO

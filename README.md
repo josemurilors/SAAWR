@@ -72,6 +72,7 @@ O SA-AWR automatiza o método "adicionar sem substituir" dos tutoriais MixMods. 
 - **Lote:** uma pasta com subpastas vira uma fila; o nome vem da pasta e a referência do nome do `.dff` (`sanchez.dff` sugere `sanchez`).
 - **Checker:** bloqueia a injeção sem ModLoader, FLA ou OLA e avisa de `cargrp.dat` duplicado, limites do OLA ativos no `.ini` e jogo aberto.
 - **Armas:** o nome informado fica no `meta.json` (sem nome, vale o nome curto); pasta própria em `modloader/awr-weapons` com o `.ide`, o `Loader.txt` (linhas de `weapon.dat` e `object.dat` clonadas da arma de referência) e, no FLA, a linha do `gtasa_weapon_config.dat` com um tipo de arma novo (a partir de 70). As texturas de HUD (`*icon`, `*crosshair`) do `.txd` são renomeadas para a nova arma.
+- **Scripts CLEO do pacote:** a pasta `CLEO` do pacote (`.cs` ou `.cleo`) pode ser copiada, de forma opcional, para a pasta do mod, em veículos e armas (caixa na interface, `--cleo` na CLI).
 - **RZL-Trainer:** se existir `CLEO/RZL-Trainer/Add-on Weapons.ini`, as armas ligadas entram nele (bloco `; AWR-BEGIN`/`; AWR-END`, com o tipo da arma e o nome); entradas feitas à mão não são tocadas.
 - **Editar o que já está instalado:** nome no jogo, tráfego e som do motor dos veículos, e o nome das armas, direto no painel lateral da aba Instalados. As linhas globais (áudio e tráfego) são refeitas na hora se o item estiver ligado; se estiver desligado, valem na próxima vez que ligar.
 - **Identidade visual:** o ID de cada item aparece como uma placa da Califórnia (branca e azul para veículos, amarela para o tipo da arma), com tipografia Barlow e Big Shoulders Display (empacotadas, sem internet) e verde de placa de rodovia nas ações.
@@ -192,7 +193,7 @@ Sem as fixtures do jogo (como na CI), os testes que dependem delas avisam "pulad
 
 ## 9. Limites de escopo e evolução
 
-**Dentro:** carros, motos, barcos, aeronaves e armas novos via ModLoader, com peças de tuning, paintjobs e cores IVF do pacote (renomeadas para o carro). **Fora:** edição de handling campo a campo, múltiplos perfis do ModLoader, Android, telemetria e rede. **Pendências conhecidas:** testar no jogo os binóculos e o jetpack; usar as linhas de arma do readme do pacote (hoje clona a referência); usar o carcols que o pacote traz no readme (o handling já é usado); áudio "silencioso" (carro sem linha de áudio testado no jogo e funciona); scripts CLEO de pacotes; **Evoluções possíveis:** importação de mods de terceiros e interface em inglês.
+**Dentro:** carros, motos, barcos, aeronaves e armas novos via ModLoader, com peças de tuning, paintjobs e cores IVF do pacote (renomeadas para o carro). **Fora:** edição de handling campo a campo, múltiplos perfis do ModLoader, Android, telemetria e rede. **Pendências conhecidas:** testar no jogo os binóculos e o jetpack; usar as linhas de arma do readme do pacote (hoje clona a referência); usar o carcols que o pacote traz no readme (o handling já é usado); áudio "silencioso" (carro sem linha de áudio testado no jogo e funciona); scripts CLEO fora de uma pasta `CLEO` (soltos na raiz do pacote); **Evoluções possíveis:** importação de mods de terceiros e interface em inglês.
 
 ## 10. Documentação complementar
 

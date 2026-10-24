@@ -179,14 +179,7 @@ impl Injector<'_> {
             fsutil::write_atomic(&dir.join(format!("{}.ivfc", req.short)), &bytes)?;
         }
         if let Some(dir) = req.cleo {
-            let to = stage.join("cleo");
-            io_at(&to, fs::create_dir_all(&to))?;
-            for e in io_at(dir, fs::read_dir(dir))?
-                .flatten()
-                .filter(|e| e.path().is_file())
-            {
-                io_at(&e.path(), fs::copy(e.path(), to.join(e.file_name())))?;
-            }
+            copy_cleo(dir, &stage)?;
         }
         let eol = b"\r\n";
         let fxt = [&ide::fxt_line(req.short, req.name)[..], eol].concat();
@@ -535,6 +528,19 @@ impl Injector<'_> {
         needs.max_cargrp_group_len = cargrp::max_group_len(&fsutil::read(&file)?);
         edit_global(&ini, |f| fla::sync(f, &fla::plan(&needs)).0)
     }
+}
+
+/// Copies the pack's CLEO files (flat) into the mod's own `cleo/` folder.
+pub(crate) fn copy_cleo(dir: &Path, stage: &Path) -> Result<()> {
+    let to = stage.join("cleo");
+    io_at(&to, fs::create_dir_all(&to))?;
+    for e in io_at(dir, fs::read_dir(dir))?
+        .flatten()
+        .filter(|e| e.path().is_file())
+    {
+        io_at(&e.path(), fs::copy(e.path(), to.join(e.file_name())))?;
+    }
+    Ok(())
 }
 
 /// TXD column of an IDE vehicle line (parts of the reference car point at it).
@@ -893,6 +899,9 @@ num_colors 1
         )
         .unwrap();
         let f = d.path().join("gta_sa.exe");
+        let scripts = d.path().join("pack-cleo");
+        fs::create_dir_all(&scripts).unwrap();
+        fs::write(scripts.join("a.cs"), b"x").unwrap();
         let req = crate::weapons::InjectWeapon {
             name: "Revolver",
             short: "revolver",
@@ -902,8 +911,10 @@ num_colors 1
             created: "2026-10-23T00:00:00Z",
             own: None,
             special: crate::weapons::Special::None,
+            cleo: Some(&scripts),
         };
         let key = inj.inject_weapon(&req).unwrap();
+        assert!(key.join("cleo/a.cs").is_file());
         assert!(key.ends_with("12400-revolver"));
         for n in [
             "revolver.dff",

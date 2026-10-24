@@ -64,7 +64,8 @@ pub fn discover(dir: &Path, reference: &str) -> PackFiles {
     PackFiles {
         handling: readme::find_handling(dir, &stem),
         weapon: readme::find_weapon(dir),
-        cleo: sub_dir(dir, "cleo").filter(|d| !with_ext(d, "cs").is_empty()),
+        cleo: sub_dir(dir, "cleo")
+            .filter(|d| !with_ext(d, "cs").is_empty() || !with_ext(d, "cleo").is_empty()),
         dff,
         txd: pick(dir, reference, "txd"),
         paintjobs: sub_dir(dir, "Paintjobs"),
@@ -103,6 +104,13 @@ mod tests {
         assert_eq!(p.parts, Some(r.join("Tuning Parts")));
         assert_eq!(p.ivfc, Some(r.join("IVF Colors/ImVehFt/colors/vw.ivfc")));
         assert_eq!(p.cleo, Some(r.join("CLEO")));
+    }
+
+    #[test]
+    fn cleo_plugins_count_as_scripts() {
+        let d = tempfile::tempdir().unwrap();
+        touch(d.path().join("cleo/lib.cleo"));
+        assert_eq!(discover(d.path(), "x").cleo, Some(d.path().join("cleo")));
     }
 
     #[test]

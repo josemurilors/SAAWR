@@ -17,7 +17,7 @@ const USAGE: &str = "uso: awr-cli <comando> [--gta <pasta do GTA SA>]
          [--paintjobs <pasta>] [--parts <pasta>] [--ivfc <arq>] [--short <nome curto>] [--traffic auto|none|<n° do grupo>] [--no-audio] [--no-pack-handling] [--cleo]
   groups
   weapons
-  inject-weapon --short <nome> --ref <ARMA, ex. DESERT_EAGLE> (--pack <pasta> | --dff <arq> --txd <arq>) [--no-pack-lines] [--special silencer|jetpack|binoculars]
+  inject-weapon --short <nome> --ref <ARMA, ex. DESERT_EAGLE> (--pack <pasta> | --dff <arq> --txd <arq>) [--no-pack-lines] [--special silencer|jetpack|binoculars] [--cleo]
   batch <pasta com subpastas> [--ref <modelo padrão>] [--yes]
   enable <pasta do mod>
   disable <pasta do mod>
@@ -205,6 +205,10 @@ fn run(args: &[String]) -> Result<(), String> {
                         .weapon
                         .as_ref()
                         .filter(|_| !args.iter().any(|a| a == "--no-pack-lines")),
+                    cleo: found
+                        .cleo
+                        .as_deref()
+                        .filter(|_| args.iter().any(|a| a == "--cleo")),
                 })
                 .map_err(|e| e.to_string())?;
             println!("injetada: {}", key.display());

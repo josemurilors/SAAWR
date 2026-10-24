@@ -394,6 +394,8 @@ pub struct InjectWeapon<'a> {
     /// The pack author's weapon lines, used instead of copies of the reference's.
     pub own: Option<&'a FoundWeapon>,
     pub special: Special,
+    /// `CLEO` folder whose files are copied into the mod's own `cleo/` folder.
+    pub cleo: Option<&'a Path>,
 }
 
 /// `(offset of the 32-byte name field, name)` of every texture in a RenderWare `.txd`.
@@ -547,6 +549,9 @@ impl Injector<'_> {
             &stage.join("Loader.txt"),
             &loader_txt(r, req.own, req.special, &name, req.short, id),
         )?;
+        if let Some(dir) = req.cleo {
+            crate::injector::copy_cleo(dir, &stage)?;
+        }
         meta::write(&stage, &m)?;
 
         self.weapon_globals(&m, true)?;

@@ -548,6 +548,7 @@ async fn inject(
                 created: &created,
                 own: c.files.weapon.as_ref().filter(|_| r.use_handling),
                 special: Special::parse(r.special.as_deref().unwrap_or_default()),
+                cleo: c.files.cleo.as_deref().filter(|_| r.use_cleo),
             })
         } else {
             let traffic = match (r.traffic.kind.as_str(), r.traffic.index) {
