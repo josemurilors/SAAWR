@@ -67,6 +67,7 @@ mod tests {
         let h = FoundHandling {
             standard: b"DIRTBIKE 500.0 195.0".to_vec(),
             special: Some(b"!	DIRTBIKE	0.4	0.4".to_vec()),
+            carcols: None,
             source: Default::default(),
         };
         let bike = bare("bike", Some(b"!	SANCHEZ	0.9"));

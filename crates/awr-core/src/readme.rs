@@ -1,5 +1,5 @@
-//! Handling lines that a vehicle pack ships in its readme. Authors tune them for the
-//! model, so the injector prefers them over a copy of the reference's line.
+//! Handling (and carcols) lines that a vehicle pack ships in its readme. Authors tune them for
+//! the model, so the injector prefers them over a copy of the reference's line.
 
 use crate::text::{lines, tokens};
 use std::{fs, path::Path, path::PathBuf};
@@ -9,6 +9,8 @@ use std::{fs, path::Path, path::PathBuf};
 pub struct FoundHandling {
     pub standard: Vec<u8>,
     pub special: Option<Vec<u8>>,
+    /// `name, c1,c2, c3,c4, ...` colour line from the same readme.
+    pub carcols: Option<Vec<u8>>,
     pub source: PathBuf,
 }
 
@@ -102,6 +104,17 @@ fn weapon_config(line: &[u8], name: &[u8]) -> bool {
         && is_float(t[9])
 }
 
+/// `name, n,n, n,n ...`: a `carcols.dat` line (comma-separated, an even run of numbers).
+fn carcols_name(line: &[u8]) -> Option<&[u8]> {
+    let t: Vec<&[u8]> = tokens(line).iter().map(|&(s, e)| &line[s..e]).collect();
+    let ok = line.contains(&b',')
+        && t.len() >= 5
+        && t.len() % 2 == 1
+        && is_name(t[0])
+        && t[1..].iter().all(|x| x.iter().all(u8::is_ascii_digit));
+    ok.then(|| t[0])
+}
+
 /// Readmes of a pack: `.txt` files at the top and one level down, in name order.
 fn readmes(dir: &Path) -> Vec<PathBuf> {
     let mut dirs = vec![dir.to_path_buf()];
@@ -149,9 +162,19 @@ pub fn find_handling(dir: &Path, prefer: &str) -> Option<FoundHandling> {
         let special = all
             .iter()
             .find(|l| special_name(l).is_some_and(|(_, n)| n.eq_ignore_ascii_case(name)));
+        let colors: Vec<&[u8]> = all
+            .iter()
+            .copied()
+            .filter(|l| carcols_name(l).is_some())
+            .collect();
+        let carcols = colors
+            .iter()
+            .find(|l| carcols_name(l).is_some_and(|n| n.eq_ignore_ascii_case(prefer.as_bytes())))
+            .or(colors.first());
         return Some(FoundHandling {
             standard: chosen.trim_ascii().to_vec(),
             special: special.map(|l| l.trim_ascii().to_vec()),
+            carcols: carcols.map(|l| l.trim_ascii().to_vec()),
             source: path,
         });
     }
@@ -240,6 +263,26 @@ mod tests {
         assert_eq!(f.standard, DIRT.as_bytes());
         assert_eq!(f.special.as_deref(), Some(SPECIAL.as_bytes()));
         assert!(f.source.ends_with("Leia.txt"));
+    }
+
+    #[test]
+    fn finds_the_carcols_line_and_ignores_prose() {
+        let text = format!(
+            "{URANUS}
+
+Carcols:
+beetle, 5,5, 6,6, 7,7
+version 2, 3
+"
+        );
+        let d = pack(&[("a.txt", text)]);
+        let f = find_handling(d.path(), "beetle").unwrap();
+        assert_eq!(f.carcols.as_deref(), Some(&b"beetle, 5,5, 6,6, 7,7"[..]));
+        assert!(carcols_name(b"version 2, 3").is_none());
+        assert!(find_handling(pack(&[("b.txt", DIRT.into())]).path(), "x")
+            .unwrap()
+            .carcols
+            .is_none());
     }
 
     #[test]

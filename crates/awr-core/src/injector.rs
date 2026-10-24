@@ -403,7 +403,10 @@ impl Injector<'_> {
             Some(standard),
             special,
             Some(ide::clone_ide(r, id, short)),
-            ide::clone_carcols(r, short),
+            match own.and_then(|h| h.carcols.as_deref()) {
+                Some(c) => ide::carcols_from_pack(r, c, short),
+                None => ide::clone_carcols(r, short),
+            },
             carmods
                 .as_deref()
                 .and_then(|c| tuning::carmods_line(c, &r.model))
@@ -894,6 +897,7 @@ num_colors 1
         let own = FoundHandling {
             standard: b"URANUS 1315.0 3000.0".to_vec(),
             special: None,
+            carcols: Some(b"URANUS, 5,5, 6,6".to_vec()),
             source: Default::default(),
         };
         let key = inj
@@ -904,6 +908,7 @@ num_colors 1
             .unwrap();
         let lines = read(&key.join("linhas.txt"));
         assert!(lines.starts_with(b"BEETLE 1315.0 3000.0"));
+        assert!(String::from_utf8_lossy(&lines).contains("beetle, 5,5, 6,6"));
         assert!(meta::read(&key).unwrap().pack_handling);
     }
 

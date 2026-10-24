@@ -67,11 +67,11 @@ O SA-AWR automatiza o método "adicionar sem substituir" dos tutoriais MixMods. 
 - Alocação de IDs, clonagem das linhas de handling/IDE/carcols/fxt, cargrp e áudio.
 - **Injeção de veículos** (carro, moto, barco, avião): pasta própria em `modloader/awr-cars`, injeção atômica, ligar/desligar, remover e reparar sem resíduo.
 - **Pacote completo:** peças de tuning (renomeadas `{peça}_{short}`, com IDs próprios e linhas `carmods`/IDE), paintjobs (`{ref}N.txd` vira `{short}N.txd`) e cores do ImVehFt (`vehicle_id` trocado).
-- **Handling do pacote:** se o readme traz a linha de handling (e a `!`/`%`/`$` de moto, barco e avião), ela é usada no lugar da cópia da referência; dá para desligar na interface (`--no-pack-handling` na CLI).
+- **Handling e cores do pacote:** se o readme traz a linha de handling (e a `!`/`%`/`$` de moto, barco e avião), ela é usada no lugar da cópia da referência, o mesmo vale para a linha de cores (`carcols`) da mesma readme; dá para desligar na interface (`--no-pack-handling` na CLI).
 - **Tráfego à escolha:** como a referência, nenhum, ou um dos grupos do `cargrp.dat`.
 - **Lote:** uma pasta com subpastas vira uma fila; o nome vem da pasta e a referência do nome do `.dff` (`sanchez.dff` sugere `sanchez`).
 - **Checker:** bloqueia a injeção sem ModLoader, FLA ou OLA e avisa de `cargrp.dat` duplicado, limites do OLA ativos no `.ini` e jogo aberto.
-- **Armas:** o nome informado fica no `meta.json` (sem nome, vale o nome curto); pasta própria em `modloader/awr-weapons` com o `.ide`, o `Loader.txt` (linhas de `weapon.dat` e `object.dat` clonadas da arma de referência) e, no FLA, a linha do `gtasa_weapon_config.dat` com um tipo de arma novo (a partir de 70). As texturas de HUD (`*icon`, `*crosshair`) do `.txd` são renomeadas para a nova arma.
+- **Armas:** o nome informado fica no `meta.json` (sem nome, vale o nome curto); pasta própria em `modloader/awr-weapons` com o `.ide`, o `Loader.txt` (linhas de `weapon.dat` e `object.dat` clonadas da arma de referência, ou as do readme do pacote; `--no-pack-lines` desliga) e, no FLA, a linha do `gtasa_weapon_config.dat` com um tipo de arma novo (a partir de 70). As texturas de HUD (`*icon`, `*crosshair`) do `.txd` são renomeadas para a nova arma.
 - **Scripts CLEO do pacote:** a pasta `CLEO` do pacote (`.cs` ou `.cleo`) pode ser copiada, de forma opcional, para a pasta do mod, em veículos e armas (caixa na interface, `--cleo` na CLI).
 - **Restaurar originais:** apaga todos os mods do AWR e devolve o `.ini` do FLA, o áudio e o `weapon_config` aos `.bak` guardados na primeira alteração (o do trainer só perde o bloco do AWR). Botão na interface, com confirmação, e `restore --yes` na CLI. Edições feitas à mão nesses arquivos depois do primeiro `.bak` também voltam ao original.
 - **RZL-Trainer:** se existir `CLEO/RZL-Trainer/Add-on Weapons.ini`, as armas ligadas entram nele (bloco `; AWR-BEGIN`/`; AWR-END`, com o tipo da arma e o nome); entradas feitas à mão não são tocadas.
@@ -194,7 +194,7 @@ Sem as fixtures do jogo (como na CI), os testes que dependem delas avisam "pulad
 
 ## 9. Limites de escopo e evolução
 
-**Dentro:** carros, motos, barcos, aeronaves e armas novos via ModLoader, com peças de tuning, paintjobs e cores IVF do pacote (renomeadas para o carro). **Fora:** edição de handling campo a campo, múltiplos perfis do ModLoader, Android, telemetria e rede. **Pendências conhecidas:** testar no jogo os binóculos e o jetpack; usar as linhas de arma do readme do pacote (hoje clona a referência); usar o carcols que o pacote traz no readme (o handling já é usado); áudio "silencioso" (carro sem linha de áudio testado no jogo e funciona); scripts CLEO fora de uma pasta `CLEO` (soltos na raiz do pacote); **Evoluções possíveis:** importação de mods de terceiros e interface em inglês.
+**Dentro:** carros, motos, barcos, aeronaves e armas novos via ModLoader, com peças de tuning, paintjobs e cores IVF do pacote (renomeadas para o carro). **Fora:** edição de handling campo a campo, múltiplos perfis do ModLoader, Android, telemetria e rede. **Pendências conhecidas:** testar no jogo os binóculos e o jetpack; carcols do pacote só valem quando a mesma readme traz o handling, e só se o formato (pares ou quádruplas) combinar com o da referência; áudio "silencioso" (carro sem linha de áudio testado no jogo e funciona); scripts CLEO fora de uma pasta `CLEO` (soltos na raiz do pacote); **Evoluções possíveis:** importação de mods de terceiros e interface em inglês.
 
 ## 10. Documentação complementar
 

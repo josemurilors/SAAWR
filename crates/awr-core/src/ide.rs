@@ -29,6 +29,21 @@ pub fn clone_carcols(r: &VehicleRef, short: &str) -> Option<Vec<u8>> {
     ))
 }
 
+/// The pack author's colour line, renamed. It must fit the reference's section: pairs for `car`,
+/// quadruples for `car4`; otherwise the reference's own colours are cloned.
+pub fn carcols_from_pack(r: &VehicleRef, line: &[u8], short: &str) -> Option<Vec<u8>> {
+    let per_color = if r.carcols.as_ref()?.four_colors {
+        4
+    } else {
+        2
+    };
+    let t = tokens(line);
+    if !(t.len() - 1).is_multiple_of(per_color) {
+        return clone_carcols(r, short);
+    }
+    Some(replace_spans(line, &[(t[0], short.as_bytes())]))
+}
+
 /// `{SHORT} {friendly name}`: the HUD name shown when entering the vehicle.
 pub fn fxt_line(short: &str, name: &str) -> Vec<u8> {
     let shown = hud_name(name);
