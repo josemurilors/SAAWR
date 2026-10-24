@@ -112,5 +112,6 @@ export const mockApi: Api = {
     mods = mods.filter((m) => m.key !== key);
     return "removido";
   },
+  restore: async () => "restaurado (3 arquivo(s) do .bak)",
   repair: async () => "reparado (0 injeção(ões) interrompida(s) limpa(s))",
 };

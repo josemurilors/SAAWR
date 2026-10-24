@@ -73,12 +73,13 @@ O SA-AWR automatiza o método "adicionar sem substituir" dos tutoriais MixMods. 
 - **Checker:** bloqueia a injeção sem ModLoader, FLA ou OLA e avisa de `cargrp.dat` duplicado, limites do OLA ativos no `.ini` e jogo aberto.
 - **Armas:** o nome informado fica no `meta.json` (sem nome, vale o nome curto); pasta própria em `modloader/awr-weapons` com o `.ide`, o `Loader.txt` (linhas de `weapon.dat` e `object.dat` clonadas da arma de referência) e, no FLA, a linha do `gtasa_weapon_config.dat` com um tipo de arma novo (a partir de 70). As texturas de HUD (`*icon`, `*crosshair`) do `.txd` são renomeadas para a nova arma.
 - **Scripts CLEO do pacote:** a pasta `CLEO` do pacote (`.cs` ou `.cleo`) pode ser copiada, de forma opcional, para a pasta do mod, em veículos e armas (caixa na interface, `--cleo` na CLI).
+- **Restaurar originais:** apaga todos os mods do AWR e devolve o `.ini` do FLA, o áudio e o `weapon_config` aos `.bak` guardados na primeira alteração (o do trainer só perde o bloco do AWR). Botão na interface, com confirmação, e `restore --yes` na CLI. Edições feitas à mão nesses arquivos depois do primeiro `.bak` também voltam ao original.
 - **RZL-Trainer:** se existir `CLEO/RZL-Trainer/Add-on Weapons.ini`, as armas ligadas entram nele (bloco `; AWR-BEGIN`/`; AWR-END`, com o tipo da arma e o nome); entradas feitas à mão não são tocadas.
 - **Editar o que já está instalado:** nome no jogo, tráfego e som do motor dos veículos, e o nome das armas, direto no painel lateral da aba Instalados. As linhas globais (áudio e tráfego) são refeitas na hora se o item estiver ligado; se estiver desligado, valem na próxima vez que ligar.
 - **Identidade visual:** o ID de cada item aparece como uma placa da Califórnia (branca e azul para veículos, amarela para o tipo da arma), com tipografia Barlow e Big Shoulders Display (empacotadas, sem internet) e verde de placa de rodovia nas ações.
 - **Nome no jogo:** o HUD não tem acentos nem aceita `~` (códigos de cor), então o nome é ajustado para ASCII seguro (até 24 caracteres) e a interface mostra como vai aparecer. O nome curto é sugerido a partir do nome, sem repetir nenhum já usado.
 - **Armas especiais:** pistola com silenciador, jetpack e binóculos (este último experimental, sem teste no jogo). Cada tipo de arma tem seu ícone (corpo a corpo, pistola, submetralhadora, escopeta, fuzil, sniper, lançador, arremesso, arma pesada, spray e equipamento).
-- **CLI** (`status`, `doctor`, `groups`, `weapons`, `inject`, `inject-weapon`, `batch`, `enable`, `disable`, `remove`, `repair`) e **interface** (Tauri + React) com abas Importar/Instalados.
+- **CLI** (`status`, `doctor`, `groups`, `weapons`, `inject`, `inject-weapon`, `batch`, `enable`, `disable`, `remove`, `repair`, `restore`) e **interface** (Tauri + React) com abas Importar/Instalados.
 
 ## 2. Princípios
 

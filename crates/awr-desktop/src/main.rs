@@ -650,6 +650,12 @@ async fn repair(state: State<'_, AppState>) -> Result<String, String> {
         .map(|n| format!("reparado ({n} injeção(ões) interrompida(s) limpa(s))"))
 }
 
+#[tauri::command]
+async fn restore(state: State<'_, AppState>) -> Result<String, String> {
+    with_injector(&state, |i| i.restore_originals())
+        .map(|f| format!("restaurado ({} arquivo(s) do .bak)", f.len()))
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -667,7 +673,8 @@ fn main() {
             set_enabled,
             remove,
             edit_mod,
-            repair
+            repair,
+            restore
         ])
         .run(tauri::generate_context!())
         .expect("erro ao iniciar o SA-AWR");

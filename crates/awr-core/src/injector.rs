@@ -296,6 +296,39 @@ impl Injector<'_> {
     }
 
     /// Shorts that cannot be reused: original models/handling names and installed mods.
+    /// Undoes everything: deletes all AWR mods (and the traffic file and staging) and puts the
+    /// `.bak` originals back over the FLA `.ini`, audio config and weapon config. The trainer
+    /// file only loses our block, so the user's own entries survive. Returns the restored files.
+    pub fn restore_originals(&self) -> Result<Vec<PathBuf>> {
+        self.not_running()?;
+        let ml = self.modloader()?;
+        for m in inventory::scan(&ml).into_iter().filter(|m| !m.is_foreign()) {
+            io_at(&m.key, fs::remove_dir_all(&m.key))?;
+        }
+        for d in [STAGING, TRAFFIC_DIR] {
+            let _ = fs::remove_dir_all(ml.join(d));
+        }
+        for d in [inventory::CARS_DIR, inventory::WEAPONS_DIR] {
+            let _ = fs::remove_dir(ml.join(d)); // only when empty: foreign folders stay
+        }
+        let mut files: Vec<PathBuf> = self.info.fla_ini().into_iter().collect();
+        if let Some(d) = self.info.fla_data() {
+            files.extend([AUDIO_CFG, crate::weapons::CONFIG].map(|n| d.join(n)));
+        }
+        let mut restored = vec![];
+        for f in files {
+            let bak = PathBuf::from(format!("{}.bak", f.display()));
+            if bak.is_file() {
+                fsutil::write_atomic(&f, &fsutil::read(&bak)?)?;
+                restored.push(f);
+            }
+        }
+        if let Some(t) = self.info.trainer_ini() {
+            crate::trainer::sync_file(&t, &[])?;
+        }
+        Ok(restored)
+    }
+
     pub fn taken_shorts(&self) -> BTreeSet<String> {
         let installed = self
             .info
@@ -893,11 +926,7 @@ num_colors 1
         let cfg0 = read(&cfg);
         let trainer = d.path().join("CLEO/RZL-Trainer/Add-on Weapons.ini");
         fs::create_dir_all(trainer.parent().unwrap()).unwrap();
-        fs::write(
-            &trainer, "; mine
-",
-        )
-        .unwrap();
+        fs::write(&trainer, "; mine\n").unwrap();
         let f = d.path().join("gta_sa.exe");
         let scripts = d.path().join("pack-cleo");
         fs::create_dir_all(&scripts).unwrap();
@@ -962,11 +991,23 @@ num_colors 1
         inj.remove(&on).unwrap();
         inj.remove(&again).unwrap();
         assert_eq!(read(&cfg), cfg0, "config back to the original bytes");
-        assert_eq!(
-            fs::read_to_string(&trainer).unwrap(),
-            "; mine
-"
-        );
+        assert_eq!(fs::read_to_string(&trainer).unwrap(), "; mine\n");
+
+        // a full restore after a fresh injection brings every original back
+        let ini = info.fla_ini().unwrap();
+        let ini0 = read(&PathBuf::from(format!("{}.bak", ini.display())));
+        inj.inject_weapon(&req).unwrap();
+        assert_ne!(read(&cfg), cfg0);
+        inj.restore_originals().unwrap();
+        assert_eq!(read(&cfg), cfg0);
+        assert_eq!(read(&ini), ini0);
+        assert!(!info
+            .modloader
+            .as_ref()
+            .unwrap()
+            .join("awr-weapons")
+            .exists());
+        assert_eq!(fs::read_to_string(&trainer).unwrap(), "; mine\n");
     }
 
     #[test]

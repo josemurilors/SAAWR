@@ -172,6 +172,10 @@ export function App() {
   const onToggle = (m: ModDto) => run(() => api.setEnabled(m.key, !m.enabled), `${m.name}: ${m.enabled ? "desligado" : "ligado"}`);
   const onRemove = (m: ModDto) => run(() => api.remove(m.key), `${m.name} removido`);
   const onRepair = () => run(() => api.repair(), "Instalação reparada");
+  const onRestore = () => {
+    if (window.confirm("Apagar TODOS os mods do AWR e restaurar os arquivos do jogo para os originais (.bak)?"))
+      run(() => api.restore(), "Instalação restaurada");
+  };
   const onCopy = (text: string) => {
     navigator.clipboard?.writeText(text);
     say(`Copiado: ${text}`);
@@ -181,7 +185,7 @@ export function App() {
   return (
     <div className="app">
       {!inTauri && <div className="mockbar">pré-visualização no navegador · dados de exemplo</div>}
-      <TopBar tab={tab} onTab={setTab} snap={snap} onOpenGame={openGame} onRepair={onRepair} />
+      <TopBar tab={tab} onTab={setTab} snap={snap} onOpenGame={openGame} onRepair={onRepair} onRestore={onRestore} />
       <main className="content" key={tab}>
         {tab === "import" ? (
           <ImportView

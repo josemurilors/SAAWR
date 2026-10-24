@@ -20,6 +20,7 @@ export interface Api {
   remove(key: string): Promise<string>;
   editMod(key: string, name: string, traffic: TrafficChoice | null, audio: boolean | null): Promise<string>;
   repair(): Promise<string>;
+  restore(): Promise<string>;
 }
 
 const real: Api = {
@@ -36,6 +37,7 @@ const real: Api = {
   remove: (key) => invoke("remove", { key }),
   editMod: (key, name, traffic, audio) => invoke("edit_mod", { key, name, traffic, audio }),
   repair: () => invoke("repair"),
+  restore: () => invoke("restore"),
 };
 
 /** In a plain browser (`npm run dev`) the app runs on fake data, to work on the look. */

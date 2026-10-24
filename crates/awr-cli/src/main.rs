@@ -22,7 +22,8 @@ const USAGE: &str = "uso: awr-cli <comando> [--gta <pasta do GTA SA>]
   enable <pasta do mod>
   disable <pasta do mod>
   remove <pasta do mod>
-  repair";
+  repair
+  restore --yes   (apaga todos os mods do AWR e devolve os arquivos do jogo aos .bak originais)";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -225,6 +226,13 @@ fn run(args: &[String]) -> Result<(), String> {
         "remove" => {
             inj.remove(&folder()?).map_err(|e| e.to_string())?;
             println!("removido");
+        }
+        "restore" => {
+            if !args.iter().any(|a| a == "--yes") {
+                return Err("isto apaga todos os mods do AWR; confirme com --yes".into());
+            }
+            let files = inj.restore_originals().map_err(|e| e.to_string())?;
+            println!("restaurado ({} arquivo(s) do .bak)", files.len());
         }
         "repair" => {
             let n = inj.repair().map_err(|e| e.to_string())?;

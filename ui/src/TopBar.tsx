@@ -12,9 +12,10 @@ interface Props {
   snap: Snapshot | null;
   onOpenGame: (path: string) => void;
   onRepair: () => void;
+  onRestore: () => void;
 }
 
-export function TopBar({ tab, onTab, snap, onOpenGame, onRepair }: Props) {
+export function TopBar({ tab, onTab, snap, onOpenGame, onRepair, onRestore }: Props) {
   const [menu, setMenu] = useState(false);
   const [path, setPath] = useState(snap?.gtaPath ?? "");
   const ref = useRef<HTMLDivElement>(null);
@@ -99,6 +100,9 @@ export function TopBar({ tab, onTab, snap, onOpenGame, onRepair }: Props) {
               <div className="row" style={{ marginTop: 12 }}>
                 <button className="btn" onClick={onRepair}>
                   <Wrench /> Reparar instalação
+                </button>
+                <button className="btn" onClick={onRestore}>
+                  Restaurar originais
                 </button>
               </div>
             </>
