@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="crates/awr-desktop/icons/icon.png" alt="Logo do SA-AWR" width="128">
+
 # SA-AWR — Add Without Replace
 
 *Ferramenta desktop em Rust para adicionar carros e armas ao GTA San Andreas sem substituir nada do jogo original.*
@@ -68,7 +70,7 @@ O SA-AWR automatiza o método "adicionar sem substituir" dos tutoriais MixMods. 
 - **Tráfego à escolha:** como a referência, nenhum, ou um dos grupos do `cargrp.dat`.
 - **Lote:** uma pasta com subpastas vira uma fila; o nome vem da pasta e a referência do nome do `.dff` (`sanchez.dff` sugere `sanchez`).
 - **Checker:** bloqueia a injeção sem ModLoader, FLA ou OLA e avisa de `cargrp.dat` duplicado, limites do OLA ativos no `.ini` e jogo aberto.
-- **Armas:** pasta própria em `modloader/awr-weapons` com o `.ide`, o `Loader.txt` (linhas de `weapon.dat` e `object.dat` clonadas da arma de referência) e, no FLA, a linha do `gtasa_weapon_config.dat` com um tipo de arma novo (a partir de 70). As texturas de HUD (`*icon`, `*crosshair`) do `.txd` são renomeadas para a nova arma.
+- **Armas:** o nome informado fica no `meta.json` (sem nome, vale o nome curto); pasta própria em `modloader/awr-weapons` com o `.ide`, o `Loader.txt` (linhas de `weapon.dat` e `object.dat` clonadas da arma de referência) e, no FLA, a linha do `gtasa_weapon_config.dat` com um tipo de arma novo (a partir de 70). As texturas de HUD (`*icon`, `*crosshair`) do `.txd` são renomeadas para a nova arma.
 - **Editar o que já está instalado:** nome no jogo, tráfego e som do motor dos veículos, e o nome das armas, direto no painel lateral da aba Instalados. As linhas globais (áudio e tráfego) são refeitas na hora se o item estiver ligado; se estiver desligado, valem na próxima vez que ligar.
 - **Identidade visual:** o ID de cada item aparece como uma placa da Califórnia (branca e azul para veículos, amarela para o tipo da arma), com tipografia Barlow e Big Shoulders Display (empacotadas, sem internet) e verde de placa de rodovia nas ações.
 - **Nome no jogo:** o HUD não tem acentos nem aceita `~` (códigos de cor), então o nome é ajustado para ASCII seguro (até 24 caracteres) e a interface mostra como vai aparecer. O nome curto é sugerido a partir do nome, sem repetir nenhum já usado.
@@ -101,7 +103,7 @@ flowchart LR
 | Área | Escolha | Papel |
 | --- | --- | --- |
 | Linguagem | Rust (edição 2021) | Core, CLI e interface |
-| Interface | Tauri 2 + React 19 + Vite (TypeScript) | Janela com abas, drag-and-drop de pastas, seletor nativo |
+| Interface | Tauri 2 + React 19 + Vite (TypeScript) | Janela com abas, drag-and-drop de pastas, seletor nativo; fontes Barlow e Big Shoulders empacotadas |
 | Interface antiga | `eframe`/`egui` + `rfd` | `awr-app`, mantida por enquanto |
 | Encoding | `encoding_rs` | Windows-1252 dos arquivos do jogo |
 | Erros | `thiserror` | `AwrError` por domínio |
@@ -161,7 +163,7 @@ Os testes não substituem o teste no jogo. O formato de pasta do ModLoader, o ha
 
 Carros de packs com recursos do ImVehFt/VehFuncs (rodas variáveis, luzes) precisam desses plugins instalados no jogo.
 
-**Armas:** trainers e scripts usam o **tipo** da arma (70, 71, …), não o ID do modelo (12400, …). Dar o ID do modelo como tipo derruba o jogo. O inventário mostra o tipo de cada arma instalada. Ex.: `awr-cli inject-weapon --short luger --ref PISTOL --pack "<pasta>" --gta "<jogo>"`.
+**Armas:** trainers e scripts usam o **tipo** da arma (70, 71, …), não o ID do modelo (12400, …). Dar o ID do modelo como tipo derruba o jogo. O inventário mostra o tipo de cada arma instalada. Ex.: `awr-cli inject-weapon --name "Luger P08" --short luger --ref PISTOL --pack "<pasta>" --gta "<jogo>"`.
 
 ### Testes
 
@@ -188,13 +190,13 @@ Sem as fixtures do jogo (como na CI), os testes que dependem delas avisam "pulad
 
 ## 9. Limites de escopo e evolução
 
-**Dentro:** carros, motos, barcos, aeronaves e armas novos via ModLoader, com peças de tuning, paintjobs e cores IVF do pacote (renomeadas para o carro). **Fora:** edição de handling campo a campo, múltiplos perfis do ModLoader, Android, telemetria e rede. **Pendências conhecidas:** testar no jogo os binóculos e o jetpack; usar as linhas de arma do readme do pacote (hoje clona a referência); usar o carcols que o pacote traz no readme (o handling já é usado); áudio "silencioso" (carro sem linha de áudio testado no jogo e funciona); scripts CLEO de pacotes; redesenho visual da interface. **Evoluções possíveis:** importação de mods de terceiros e interface em inglês.
+**Dentro:** carros, motos, barcos, aeronaves e armas novos via ModLoader, com peças de tuning, paintjobs e cores IVF do pacote (renomeadas para o carro). **Fora:** edição de handling campo a campo, múltiplos perfis do ModLoader, Android, telemetria e rede. **Pendências conhecidas:** testar no jogo os binóculos e o jetpack; usar as linhas de arma do readme do pacote (hoje clona a referência); usar o carcols que o pacote traz no readme (o handling já é usado); áudio "silencioso" (carro sem linha de áudio testado no jogo e funciona); scripts CLEO de pacotes; **Evoluções possíveis:** importação de mods de terceiros e interface em inglês.
 
 ## 10. Documentação complementar
 
 - [docs/ESCOPO.md](docs/ESCOPO.md): especificação completa (arquitetura, formatos de arquivo, contrato da API, fontes).
 - [docs/PLANO.md](docs/PLANO.md): plano de desenvolvimento por fases, com o resultado do spike no jogo.
-- [docs/UI.md](docs/UI.md): plano de redesign da interface.
+- [docs/UI.md](docs/UI.md): plano do redesign da interface (identidade visual já aplicada; o documento ainda marca como proposta).
 - Tutoriais seguidos: [carros](https://www.mixmods.com.br/2020/02/tutorial-adicionar-carros-sem-substituir/) e [armas](https://www.mixmods.com.br/2019/02/tutorial-adicionar-armas-sem-substituir/) sem substituir (MixMods).
 
 ## 11. Autor e licença

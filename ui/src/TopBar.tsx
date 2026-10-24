@@ -48,10 +48,10 @@ export function TopBar({ tab, onTab, snap, onOpenGame, onRepair }: Props) {
 
   return (
     <header className="topbar" ref={ref}>
-      <span className="plate" title="SA-AWR: adicionar sem substituir">
-        <span className="top">adicionar sem substituir</span>
-        <span className="num" style={{ fontSize: 20 }}>SA-AWR</span>
+      <span className="wordmark" title="SA-AWR: adicionar sem substituir">
+        <b>SA-AWR</b>
       </span>
+
       <nav className="tabs">
         <button className={`tab ${tab === "import" ? "active" : ""}`} onClick={() => onTab("import")}>
           Importar

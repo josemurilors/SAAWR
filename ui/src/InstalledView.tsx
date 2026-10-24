@@ -175,13 +175,13 @@ function EditSheet({ m, game, onClose, onRemove, onCopy, onEdit }: SheetProps) {
       <div>
         <h3>{m.name}</h3>
         <div className="meta">
-          {weapon ? `arma · ${WEAPON_CLASS_LABEL[weaponClass(m.reference)]}` : `${m.vehicleType ?? "carro"}`} · baseado em {m.reference}
+          {weapon ? `arma · ${WEAPON_CLASS_LABEL[weaponClass(m.reference)]}` : `${m.vehicleType ?? "carro"}`} · baseado em {m.reference} · arquivo {m.short}
           {!m.enabled && " · desligado"}
         </div>
       </div>
 
       <label className="fl">
-        {weapon ? "Nome" : "Nome no jogo"}
+        {weapon ? "Nome da arma" : "Nome no jogo"}
         <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
       </label>
       {!weapon && <HudPreview name={name} />}

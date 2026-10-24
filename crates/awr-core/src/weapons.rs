@@ -383,6 +383,8 @@ fn with_first_person_flag(line: &[u8]) -> Vec<u8> {
 }
 
 pub struct InjectWeapon<'a> {
+    /// Display name shown in the tool; falls back to `short` when blank.
+    pub name: &'a str,
     pub short: &'a str,
     pub dff: &'a Path,
     pub txd: &'a Path,
@@ -503,7 +505,12 @@ impl Injector<'_> {
             kind: ModKind::Weapon,
             id,
             weapon_type_id: Some(type_id),
-            name: req.short.into(),
+            name: if req.name.trim().is_empty() {
+                req.short
+            } else {
+                req.name.trim()
+            }
+            .into(),
             short: req.short.into(),
             vehicle_type: None,
             reference: r.name.clone(),

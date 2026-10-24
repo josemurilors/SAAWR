@@ -98,8 +98,8 @@ export function KindIcon({ kind, ...p }: { kind: Kind } & SVGProps<SVGSVGElement
 export function Mark(p: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 28 28" width={26} height={26} {...p}>
-      <rect x="1.5" y="1.5" width="25" height="25" rx="4" fill="#141414" stroke="#d4af37" strokeWidth="2.5" />
-      <path d="M14 7v14M7 14h14" stroke="#d4af37" strokeWidth="2.6" strokeLinecap="round" />
+      <rect x="1.5" y="1.5" width="25" height="25" rx="4" fill="#1A1A1A" stroke="#F2F0E6" strokeWidth="2.5" />
+      <path d="M14 7v14M7 14h14" stroke="#F2F0E6" strokeWidth="2.6" strokeLinecap="round" />
     </svg>
   );
 }

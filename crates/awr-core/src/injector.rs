@@ -869,6 +869,7 @@ num_colors 1
         let cfg0 = read(&cfg);
         let f = d.path().join("gta_sa.exe");
         let req = crate::weapons::InjectWeapon {
+            name: "Revolver",
             short: "revolver",
             dff: &f,
             txd: &f,

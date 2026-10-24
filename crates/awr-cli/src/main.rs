@@ -194,6 +194,7 @@ fn run(args: &[String]) -> Result<(), String> {
                 .map_or(0, |d| d.as_secs());
             let key = inj
                 .inject_weapon(&InjectWeapon {
+                    name: opt(args, "--name").unwrap_or(short),
                     short,
                     dff: &dff,
                     txd: &txd,

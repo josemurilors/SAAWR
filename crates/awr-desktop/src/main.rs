@@ -540,6 +540,7 @@ async fn inject(
         };
         let result = if r.weapon {
             inj.inject_weapon(&InjectWeapon {
+                name: &r.name,
                 short: &r.short,
                 dff,
                 txd,

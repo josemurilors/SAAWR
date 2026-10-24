@@ -281,6 +281,7 @@ impl App {
                 match (r, self.injector()) {
                     (Some((dff, txd)), Some(inj)) if item.weapon => {
                         let res = inj.inject_weapon(&InjectWeapon {
+                            name: &item.name,
                             short: &item.short,
                             dff,
                             txd,

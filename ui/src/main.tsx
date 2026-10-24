@@ -4,8 +4,8 @@ import { App } from "./App";
 import "@fontsource/barlow-semi-condensed/latin-400.css";
 import "@fontsource/barlow-semi-condensed/latin-500.css";
 import "@fontsource/barlow-semi-condensed/latin-600.css";
-import "@fontsource/big-shoulders-display/latin-700";
-import "@fontsource/big-shoulders-display/latin-800";
+import "@fontsource/titan-one/latin-400.css";
+import "@fontsource/unifrakturcook/latin-700.css";
 import "./styles.css";
 
 createRoot(document.getElementById("root")!).render(
