@@ -18,7 +18,7 @@
 
 | | |
 | --- | --- |
-| **Versão** | 0.1.0 (v2, reescrita do zero) |
+| **Versão** | 0.2.0 (v2, reescrita do zero) |
 | **Estado** | Veículos (carro, moto, barco, avião) e armas (pistola, fuzil, corpo a corpo) prontos e testados no jogo, com CLI e interface; release e polimento pendentes |
 | **Contexto** | Projeto pessoal; segue os tutoriais MixMods de carros e armas sem substituir |
 | **Alvo** | Windows, GTA SA 1.0 US com ModLoader + fastman92 Limit Adjuster + Open Limit Adjuster |
