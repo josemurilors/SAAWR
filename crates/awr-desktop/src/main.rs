@@ -63,6 +63,8 @@ struct GameDto {
     modloader: bool,
     fla: bool,
     ola: bool,
+    /// The Custom Ammu-Nation mod is installed (weapons can be put on sale).
+    shop: bool,
     refs: Vec<RefDto>,
     weapons: Vec<WeaponDto>,
     groups: Vec<GroupDto>,
@@ -114,6 +116,42 @@ struct ModDto {
     /// The traffic setting as the editor needs it: `auto`, `none` or `group:N`.
     traffic_choice: String,
     audio: bool,
+    shop: Option<ShopDto>,
+}
+
+/// How a weapon is sold (Custom Ammu-Nation).
+#[derive(Serialize, Deserialize, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
+struct ShopDto {
+    category: u8,
+    unlock: u8,
+    anim: u8,
+    price: u32,
+    ammo: u32,
+}
+
+impl From<awr_core::meta::Shop> for ShopDto {
+    fn from(s: awr_core::meta::Shop) -> Self {
+        Self {
+            category: s.category,
+            unlock: s.unlock,
+            anim: s.anim,
+            price: s.price,
+            ammo: s.ammo,
+        }
+    }
+}
+
+impl From<ShopDto> for awr_core::meta::Shop {
+    fn from(s: ShopDto) -> Self {
+        Self {
+            category: s.category.min(10),
+            unlock: s.unlock.min(10),
+            anim: s.anim.min(2),
+            price: s.price,
+            ammo: s.ammo,
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -184,6 +222,8 @@ struct InjectRequest {
     special: Option<String>,
     /// Weapons: weapon (by `weapon.dat` name) whose sound and behavior to inherit.
     sound_like: Option<String>,
+    /// Weapons: put it on sale in the Ammu-Nation.
+    shop: Option<ShopDto>,
 }
 
 // ---- helpers --------------------------------------------------------------------------
@@ -275,6 +315,7 @@ fn mod_dto(m: &InstalledMod, groups: &[Group]) -> ModDto {
             .and_then(|x| x.traffic_group.clone())
             .unwrap_or_else(|| "none".to_string()),
         audio: meta.is_some_and(|x| x.audio.is_some()),
+        shop: meta.and_then(|x| x.shop).map(Into::into),
     }
 }
 
@@ -320,6 +361,7 @@ fn snapshot_of(state: &AppState) -> Snapshot {
             modloader: g.info.modloader.is_some(),
             fla: g.info.fla_ini().is_some(),
             ola: g.info.ola_asi.is_some(),
+            shop: g.info.ammun_dat().is_some(),
             refs: g
                 .refs
                 .iter()
@@ -461,6 +503,12 @@ async fn suggest_short(
     })
 }
 
+/// Default price, ammo and category for a weapon cloned from `reference`.
+#[tauri::command]
+async fn shop_defaults(reference: String) -> Result<ShopDto, String> {
+    Ok(awr_core::shop::defaults(&reference).into())
+}
+
 /// How the name will read in the game (the HUD font has no accents and a few reserved symbols).
 #[tauri::command]
 async fn hud_name(name: String) -> Result<String, String> {
@@ -551,6 +599,7 @@ async fn inject(
                 own: c.files.weapon.as_ref().filter(|_| r.use_handling),
                 special: Special::parse(r.special.as_deref().unwrap_or_default()),
                 sound_like: r.sound_like.as_deref().filter(|s| !s.is_empty()),
+                shop: r.shop.map(Into::into),
                 cleo: c.files.cleo.as_deref().filter(|_| r.use_cleo),
             })
         } else {
@@ -622,6 +671,8 @@ async fn edit_mod(
     name: String,
     traffic: Option<TrafficDto>,
     audio: Option<bool>,
+    shop: Option<ShopDto>,
+    set_shop: bool,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
     let traffic = traffic.map(|t| match (t.kind.as_str(), t.index) {
@@ -636,6 +687,7 @@ async fn edit_mod(
                 name: &name,
                 traffic,
                 audio,
+                shop: set_shop.then(|| shop.map(Into::into)),
             },
         )
     })
@@ -671,6 +723,7 @@ fn main() {
             forget_items,
             suggest_short,
             hud_name,
+            shop_defaults,
             validate,
             inject,
             set_enabled,

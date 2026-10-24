@@ -30,6 +30,19 @@ pub struct Part {
     pub id: u32,
 }
 
+/// How a weapon is sold by the Custom Ammu-Nation mod (see `shop.rs`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Shop {
+    /// 0 pistols .. 10 melee, as in the mod's `ammun.dat`.
+    pub category: u8,
+    /// 0..=10: which mission unlocks it.
+    pub unlock: u8,
+    /// Shop clerk animation: 0 one hand, 1 two hands, 2 rifle.
+    pub anim: u8,
+    pub price: u32,
+    pub ammo: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Meta {
     pub v: u32,
@@ -54,6 +67,9 @@ pub struct Meta {
     /// turning the mod back on needs nothing but this file.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub weapon_config: Vec<String>,
+    /// Weapons: sold in the Ammu-Nation (needs the Custom Ammu-Nation mod).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shop: Option<Shop>,
 }
 
 /// UTC timestamp for `created`, from Unix seconds (civil-from-days, no date crate).
@@ -108,6 +124,7 @@ pub(crate) fn sample(id: u32, short: &str) -> Meta {
         parts: vec![],
         pack_handling: false,
         weapon_config: vec![],
+        shop: None,
     }
 }
 

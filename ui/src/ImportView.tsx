@@ -3,6 +3,7 @@ import { inTauri } from "./api";
 import { t } from "./i18n";
 import { Close, Folder, KindIcon, Upload, WEAPON_CLASS_LABEL, kindOf, weaponClass } from "./Icons";
 import { HudPreview } from "./Plate";
+import { ShopFields } from "./ShopFields";
 import type { GameDto, QItem, Special, TrafficChoice } from "./types";
 
 interface Props {
@@ -233,6 +234,8 @@ function QueueRow({ item, game, problem, p }: { item: QItem; game: GameDto | nul
             </label>
           )}
         </div>
+
+        {item.weapon && <ShopFields game={game} reference={item.reference} value={item.shop} onChange={(shop) => patch({ shop })} />}
 
         {showProblem ? (
           <div className="problem">{problem}</div>

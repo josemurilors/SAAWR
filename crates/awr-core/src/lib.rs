@@ -19,6 +19,7 @@ pub mod pack;
 pub mod paths;
 pub mod readme;
 pub mod references;
+pub mod shop;
 #[cfg(test)]
 mod testutil;
 pub mod text;

@@ -3,7 +3,8 @@ import { t } from "./i18n";
 import { parseTraffic, trafficValue } from "./ImportView";
 import { Copy, FAMILY_LABEL, KindIcon, Trash, WEAPON_CLASS_LABEL, familyOf, kindOf, weaponClass, type Family } from "./Icons";
 import { HudPreview, Plate } from "./Plate";
-import type { GameDto, ModDto, TrafficChoice } from "./types";
+import { ShopFields } from "./ShopFields";
+import type { GameDto, ModDto, Shop, TrafficChoice } from "./types";
 
 interface Props {
   mods: ModDto[];
@@ -11,7 +12,7 @@ interface Props {
   onToggle: (m: ModDto) => void;
   onRemove: (m: ModDto) => void;
   onCopy: (text: string) => void;
-  onEdit: (m: ModDto, name: string, traffic: TrafficChoice | null, audio: boolean | null) => Promise<boolean>;
+  onEdit: (m: ModDto, name: string, traffic: TrafficChoice | null, audio: boolean | null, shop: Shop | null) => Promise<boolean>;
 }
 
 /** Stable across switching a mod off (that renames its folder, so `key` changes). */
@@ -153,14 +154,18 @@ function EditSheet({ m, game, onClose, onRemove, onCopy, onEdit }: SheetProps) {
   const [name, setName] = useState(m.name);
   const [traffic, setTraffic] = useState<TrafficChoice>(parseTraffic(m.trafficChoice));
   const [audio, setAudio] = useState(m.audio);
+  const [shop, setShop] = useState<Shop | null>(m.shop);
   const [confirm, setConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const dirty = name !== m.name || (!weapon && (trafficValue(traffic) !== m.trafficChoice || audio !== m.audio));
+  const dirty =
+    name !== m.name ||
+    (!weapon && (trafficValue(traffic) !== m.trafficChoice || audio !== m.audio)) ||
+    (weapon && JSON.stringify(shop) !== JSON.stringify(m.shop));
 
   const save = async () => {
     setSaving(true);
-    await onEdit(m, name, weapon ? null : traffic, weapon ? null : audio);
+    await onEdit(m, name, weapon ? null : traffic, weapon ? null : audio, weapon ? shop : null);
     setSaving(false);
   };
 
@@ -212,6 +217,8 @@ function EditSheet({ m, game, onClose, onRemove, onCopy, onEdit }: SheetProps) {
         </>
       )}
 
+      {weapon && <ShopFields game={game} reference={m.reference} value={shop} onChange={setShop} />}
+
       {weapon && (
         <div className="note">
           {t("Em trainers e scripts use o tipo")} <strong style={{ color: "var(--chalk)" }}>{m.weaponTypeId}</strong>
@@ -233,6 +240,7 @@ function EditSheet({ m, game, onClose, onRemove, onCopy, onEdit }: SheetProps) {
             setName(m.name);
             setTraffic(parseTraffic(m.trafficChoice));
             setAudio(m.audio);
+            setShop(m.shop);
           }}
         >
           {t("Desfazer")}

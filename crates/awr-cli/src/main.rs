@@ -17,7 +17,7 @@ const USAGE: &str = "uso: awr-cli <comando> [--gta <pasta do GTA SA>]
          [--paintjobs <pasta>] [--parts <pasta>] [--ivfc <arq>] [--short <nome curto>] [--traffic auto|none|<n° do grupo>] [--no-audio] [--no-pack-handling] [--cleo]
   groups
   weapons
-  inject-weapon --short <nome> --ref <ARMA, ex. DESERT_EAGLE> (--pack <pasta> | --dff <arq> --txd <arq>) [--no-pack-lines] [--special silencer|jetpack|binoculars] [--sound-like <ARMA>] [--cleo]
+  inject-weapon --short <nome> --ref <ARMA, ex. DESERT_EAGLE> (--pack <pasta> | --dff <arq> --txd <arq>) [--no-pack-lines] [--special silencer|jetpack|binoculars] [--sound-like <ARMA>] [--shop [--price n] [--ammo n] [--category 0-10] [--unlock 0-10]] [--cleo]
   batch <pasta com subpastas> [--ref <modelo padrão>] [--yes]
   enable <pasta do mod>
   disable <pasta do mod>
@@ -204,6 +204,7 @@ fn run(args: &[String]) -> Result<(), String> {
                     created: &meta::rfc3339(secs),
                     special: Special::parse(opt(args, "--special").unwrap_or_default()),
                     sound_like: opt(args, "--sound-like"),
+                    shop: shop_arg(args, reference)?,
                     own: found
                         .weapon
                         .as_ref()
@@ -267,6 +268,38 @@ fn run(args: &[String]) -> Result<(), String> {
         _ => return Err(USAGE.to_string()),
     }
     Ok(())
+}
+
+/// `--shop` puts the weapon in the Custom Ammu-Nation with defaults for its reference;
+/// `--price`, `--ammo`, `--category` (0..=10) and `--unlock` (0..=10) override them.
+fn shop_arg(args: &[String], reference: &str) -> Result<Option<meta::Shop>, String> {
+    if !args.iter().any(|a| a == "--shop") {
+        return Ok(None);
+    }
+    let mut s = awr_core::shop::defaults(reference);
+    let num = |flag: &str| -> Result<Option<u32>, String> {
+        opt(args, flag)
+            .map(|v| {
+                v.parse()
+                    .map_err(|_| format!("{flag} precisa de um número"))
+            })
+            .transpose()
+    };
+    if let Some(v) = num("--price")? {
+        s.price = v;
+    }
+    if let Some(v) = num("--ammo")? {
+        s.ammo = v;
+    }
+    for (flag, field) in [("--category", &mut s.category), ("--unlock", &mut s.unlock)] {
+        if let Some(v) = num(flag)? {
+            *field = u8::try_from(v)
+                .ok()
+                .filter(|v| *v <= 10)
+                .ok_or(format!("{flag} vai de 0 a 10"))?;
+        }
+    }
+    Ok(Some(s))
 }
 
 /// `auto` (default), `none`, or the group number from `awr-cli groups`.

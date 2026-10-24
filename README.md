@@ -73,6 +73,7 @@ O SA-AWR automatiza o método "adicionar sem substituir" dos tutoriais MixMods. 
 - **Checker:** bloqueia a injeção sem ModLoader, FLA ou OLA e avisa de `cargrp.dat` duplicado, limites do OLA ativos no `.ini` e jogo aberto.
 - **Armas:** o nome informado fica no `meta.json` (sem nome, vale o nome curto); pasta própria em `modloader/awr-weapons` com o `.ide`, o `Loader.txt` (linhas de `weapon.dat` e `object.dat` clonadas da arma de referência, ou as do readme do pacote; `--no-pack-lines` desliga) e, no FLA, a linha do `gtasa_weapon_config.dat` com um tipo de arma novo (a partir de 70). As texturas de HUD (`*icon`, `*crosshair`) do `.txd` são renomeadas para a nova arma.
 - **Scripts CLEO do pacote:** a pasta `CLEO` do pacote (`.cs` ou `.cleo`) pode ser copiada, de forma opcional, para a pasta do mod, em veículos e armas (caixa na interface, `--cleo` na CLI).
+- **Custom Ammu-Nation Mod:** armas podem ir para a loja ([mod do cjfan](https://www.mixmods.com.br/2022/01/custom-ammunation-mod-adicionar-armas-pra-comprar/)): categoria, desbloqueio, preço e munição na importação e na edição (`--shop [--price n --ammo n --category 0-10 --unlock 0-10]` na CLI), com valores sugeridos pela arma de referência. As linhas entram num bloco `# AWR-BEGIN`/`# AWR-END` do `data/ammun.dat` do mod, o nome vem de um `.fxt` da própria arma (chave `AWR{tipo}`) e tudo sai ao desligar, remover ou restaurar. Sem o mod instalado, nada é escrito. Não testado no jogo.
 - **Interface em português e inglês:** seletor PT/EN no topo (lembra a escolha; sem escolha, segue o idioma do sistema). As mensagens de erro e avisos que vêm do núcleo em Rust continuam em português.
 - **Som da arma:** dá para herdar som e comportamento de outra arma (campo "Som e comportamento iguais a" na interface, `--sound-like` na CLI) em vez da referência; sons próprios (WAVs) ainda não, veja [docs/AUDIO.md](docs/AUDIO.md).
 - **Adotar pasta sem `meta.json`:** `awr-cli adopt <pasta>` refaz o registro de um carro ou arma que já está em `awr-cars`/`awr-weapons` (lê o `.ide`/`linhas.txt`, o áudio, o tráfego e a linha do `weapon_config`) para que a ferramenta volte a ligar, editar e remover. Sem `--yes` só mostra o que seria gravado; carros pedem `--ref`. Não mexe nos arquivos do jogo, não reconhece peças de tuning e só vale para essas duas pastas (mods soltos no ModLoader continuam intocados). Só CLI por enquanto.
@@ -216,6 +217,8 @@ O SA-AWR não inclui nem distribui nenhum destes mods; ele automatiza a configur
 | SA Essentials Pack (ModLoader, CLEO e outros mods essenciais) | Pacote organizado por Junior_Djjr (MixMods); o Widescreen Fix é de ThirteenAG | [mixmods.com.br](https://www.mixmods.com.br/2019/06/sa-essentials-pack/) |
 | Open Limit Adjuster (OLA) | LINK/2012, ThirteenAG e Blackbird88 | [mixmods.com.br](https://www.mixmods.com.br/2022/10/open-limit-adjuster/) |
 | fastman92 Limit Adjuster (FLA) | fastman92 | [mixmods.com.br](https://www.mixmods.com.br/2022/01/fastman92-limit-adjuster/) |
+| Custom Ammu-Nation Mod | cjfan (agradecimento a B1ack_Wh1te), publicado por Junior_Djjr | [mixmods.com.br](https://www.mixmods.com.br/2022/01/custom-ammunation-mod-adicionar-armas-pra-comprar/) |
+| Create Weapon Pickups | Um Geek | [mixmods.com.br](https://www.mixmods.com.br/2018/04/criar-pick-ups-de-armas-editando-um-arquivo-dat/) |
 
 ## 12. Autor e licença
 

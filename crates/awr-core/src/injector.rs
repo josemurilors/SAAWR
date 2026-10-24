@@ -36,6 +36,9 @@ pub struct EditMod<'a> {
     pub traffic: Option<Traffic>,
     /// Vehicles only: clone the reference's engine sound (or not).
     pub audio: Option<bool>,
+    /// Weapons only: `Some(None)` takes it out of the Ammu-Nation, `Some(Some(_))` sets how it is
+    /// sold, `None` leaves it as it is.
+    pub shop: Option<Option<crate::meta::Shop>>,
 }
 
 /// Where the new car shows up in traffic.
@@ -136,6 +139,7 @@ impl Injector<'_> {
             return Err(AwrError::AlreadyExists { path: dest });
         }
         let m = Meta {
+            shop: None,
             v: 1,
             kind: ModKind::Vehicle,
             id,
@@ -198,7 +202,7 @@ impl Injector<'_> {
         io_at(&dest, fs::rename(&stage, &dest))?;
         let _ = fs::remove_dir(ml.join(STAGING));
         self.sync_fla()?;
-        self.sync_trainer()?;
+        self.sync_addons()?;
         Ok(dest)
     }
 
@@ -228,6 +232,28 @@ impl Injector<'_> {
                 fsutil::write_atomic(&key.join(fxt), &line)?;
             }
         }
+        if old.kind == ModKind::Weapon {
+            if let Some(shop) = req.shop {
+                new.shop = shop;
+            }
+            let fxt = old.files.fxt.clone();
+            match (&new.shop, &fxt) {
+                (Some(_), Some(name)) => {
+                    new.files.fxt = Some(name.clone());
+                    fsutil::write_atomic(&key.join(name), &crate::weapons::shop_fxt(&new))?;
+                }
+                (None, Some(name)) => {
+                    let _ = fs::remove_file(key.join(name));
+                    new.files.fxt = None;
+                }
+                _ => {}
+            }
+            if new.shop.is_some() && new.files.fxt.is_none() {
+                let name = format!("{}.fxt", new.short);
+                fsutil::write_atomic(&key.join(&name), &crate::weapons::shop_fxt(&new))?;
+                new.files.fxt = Some(name);
+            }
+        }
         let enabled = inventory::split_disabled(key).0;
         if enabled {
             self.globals(&old, false)?;
@@ -236,7 +262,7 @@ impl Injector<'_> {
         if enabled {
             self.globals(&new, true)?;
         }
-        self.sync_trainer()
+        self.sync_addons()
     }
 
     /// Folder rename (`. ` prefix) plus the mod's lines in the global files.
@@ -256,7 +282,7 @@ impl Injector<'_> {
         io_at(&new, fs::rename(key, &new))?;
         self.globals(&m, enabled)?;
         self.sync_fla()?;
-        self.sync_trainer()?;
+        self.sync_addons()?;
         Ok(new)
     }
 
@@ -266,7 +292,7 @@ impl Injector<'_> {
         io_at(key, fs::remove_dir_all(key))?;
         self.globals(&m, false)?;
         self.sync_fla()?;
-        self.sync_trainer()
+        self.sync_addons()
     }
 
     /// Cleans staging leftovers and makes the global files match the folders:
@@ -291,7 +317,7 @@ impl Injector<'_> {
             }
         }
         self.sync_fla()?;
-        self.sync_trainer()?;
+        self.sync_addons()?;
         Ok(dropped)
     }
 
@@ -316,7 +342,7 @@ impl Injector<'_> {
         m.created = created.into();
         meta::write(key, &m)?;
         self.sync_fla()?;
-        self.sync_trainer()?;
+        self.sync_addons()?;
         Ok(m)
     }
 
@@ -349,6 +375,9 @@ impl Injector<'_> {
         }
         if let Some(t) = self.info.trainer_ini() {
             crate::trainer::sync_file(&t, &[])?;
+        }
+        if let Some(a) = self.info.ammun_dat() {
+            crate::shop::sync_file(&a, &[])?;
         }
         Ok(restored)
     }
@@ -539,6 +568,26 @@ impl Injector<'_> {
             fsutil::write_atomic(&path, &new)?;
         }
         Ok(())
+    }
+
+    /// Everything that mirrors the enabled weapons into other mods' files.
+    pub(crate) fn sync_addons(&self) -> Result<()> {
+        self.sync_trainer()?;
+        self.sync_shop()
+    }
+
+    /// Lists the enabled, for-sale weapons in the Custom Ammu-Nation's `ammun.dat` (no-op without it).
+    pub(crate) fn sync_shop(&self) -> Result<()> {
+        let Some(dat) = self.info.ammun_dat() else {
+            return Ok(());
+        };
+        let entries: Vec<_> = inventory::scan(&self.modloader()?)
+            .into_iter()
+            .filter(|m| m.enabled)
+            .filter_map(|m| m.meta)
+            .filter_map(|m| (m.kind == ModKind::Weapon).then_some((m.weapon_type_id?, m.shop?)))
+            .collect();
+        crate::shop::sync_file(&dat, &entries)
     }
 
     /// Lists the enabled weapons in RZL-Trainer's `Add-on Weapons.ini` (no-op without the trainer).
@@ -1052,6 +1101,16 @@ num_colors 1
         let trainer = d.path().join("CLEO/RZL-Trainer/Add-on Weapons.ini");
         fs::create_dir_all(trainer.parent().unwrap()).unwrap();
         fs::write(&trainer, "; mine\n").unwrap();
+        let ammun = d.path().join("modloader/Custom Ammunation/data/ammun.dat");
+        fs::create_dir_all(ammun.parent().unwrap()).unwrap();
+        fs::write(
+            &ammun,
+            "# shop
+22	PISTOL	0	0	0	200	30	111111
+",
+        )
+        .unwrap();
+        let ammun0 = read(&ammun);
         let f = d.path().join("gta_sa.exe");
         let scripts = d.path().join("pack-cleo");
         fs::create_dir_all(&scripts).unwrap();
@@ -1066,10 +1125,21 @@ num_colors 1
             own: None,
             special: crate::weapons::Special::None,
             sound_like: None,
+            shop: Some(crate::meta::Shop {
+                category: 0,
+                unlock: 1,
+                anim: 0,
+                price: 450,
+                ammo: 12,
+            }),
             cleo: Some(&scripts),
         };
         let key = inj.inject_weapon(&req).unwrap();
         assert!(key.join("cleo/a.cs").is_file());
+        let shop = String::from_utf8_lossy(&read(&ammun)).into_owned();
+        assert!(shop.contains("70	AWR70	0	0	1	450	12	111111"), "{shop}");
+        let fxt = String::from_utf8_lossy(&read(&key.join("revolver.fxt"))).into_owned();
+        assert_eq!(fxt.trim(), "AWR70 Revolver");
         assert!(key.ends_with("12400-revolver"));
         for n in [
             "revolver.dff",
@@ -1129,6 +1199,7 @@ num_colors 1
         inj.remove(&again).unwrap();
         assert_eq!(read(&cfg), cfg0, "config back to the original bytes");
         assert_eq!(fs::read_to_string(&trainer).unwrap(), "; mine\n");
+        assert_eq!(read(&ammun), ammun0, "shop file back to the original");
 
         // a full restore after a fresh injection brings every original back
         let ini = info.fla_ini().unwrap();
@@ -1170,6 +1241,7 @@ num_colors 1
         inj.edit_mod(
             &key,
             &EditMod {
+                shop: None,
                 name: "  Exército ~r~ Novo  ",
                 traffic: Some(Traffic::Group(29)),
                 audio: Some(false),
@@ -1196,6 +1268,7 @@ num_colors 1
         inj.edit_mod(
             &off,
             &EditMod {
+                shop: None,
                 name: "Parado",
                 traffic: Some(Traffic::Auto),
                 audio: Some(true),
@@ -1212,6 +1285,7 @@ num_colors 1
             inj.edit_mod(
                 &on,
                 &EditMod {
+                    shop: None,
                     name: "  ",
                     traffic: None,
                     audio: None

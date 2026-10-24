@@ -1,5 +1,7 @@
 export type Severity = "warn" | "error";
 export interface Finding { severity: Severity; msg: string }
+/** How a weapon is sold by the Custom Ammu-Nation Mod. */
+export interface Shop { category: number; unlock: number; anim: number; price: number; ammo: number }
 export interface RefDto { model: string; kind: string }
 export interface WeaponDto { name: string; melee: boolean }
 export interface GroupDto { index: number; label: string; len: number }
@@ -8,6 +10,8 @@ export interface GameDto {
   modloader: boolean;
   fla: boolean;
   ola: boolean;
+  /** The Custom Ammu-Nation Mod is installed. */
+  shop: boolean;
   refs: RefDto[];
   weapons: WeaponDto[];
   groups: GroupDto[];
@@ -31,6 +35,7 @@ export interface ModDto {
   /** The traffic setting for the editor: "auto", "none" or "group:N". */
   trafficChoice: string;
   audio: boolean;
+  shop: Shop | null;
 }
 export interface Snapshot {
   gtaPath: string;
@@ -65,6 +70,7 @@ export interface QItem extends ItemDto {
   special: Special;
   /** Weapons: inherit sound/behavior from this weapon ("" = the reference). */
   soundLike: string;
+  shop: Shop | null;
   include: boolean;
   traffic: TrafficChoice;
   audio: boolean;
@@ -83,6 +89,7 @@ export interface InjectRequest {
   useCleo: boolean;
   special: Special | null;
   soundLike: string | null;
+  shop: Shop | null;
 }
 export interface InjectResult { id: number; ok: boolean; message: string }
 export interface Problem { id: number; problem: string | null }

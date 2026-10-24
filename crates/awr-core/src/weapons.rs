@@ -399,8 +399,21 @@ pub struct InjectWeapon<'a> {
     /// Weapon whose behavior the new one inherits (sound, animation, fire type), instead of the
     /// reference's; ignored for special weapons, whose parent is fixed.
     pub sound_like: Option<&'a str>,
+    /// Sell it in the Ammu-Nation (Custom Ammu-Nation mod); writes the weapon's name as a GXT entry.
+    pub shop: Option<crate::meta::Shop>,
     /// `CLEO` folder whose files are copied into the mod's own `cleo/` folder.
     pub cleo: Option<&'a Path>,
+}
+
+/// The `.fxt` that gives the weapon its Ammu-Nation menu name (`AWR{type} {name}`).
+pub(crate) fn shop_fxt(m: &Meta) -> Vec<u8> {
+    let key = crate::shop::gxt_key(m.weapon_type_id.unwrap_or(0));
+    [
+        format!("{key} {}", crate::ide::hud_name(&m.name)).as_bytes(),
+        b"
+",
+    ]
+    .concat()
 }
 
 /// `(offset of the 32-byte name field, name)` of every texture in a RenderWare `.txd`.
@@ -536,10 +549,11 @@ impl Injector<'_> {
             files: Files {
                 dff: format!("{}.dff", req.short),
                 txd: format!("{}.txd", req.short),
-                fxt: None,
+                fxt: req.shop.map(|_| format!("{}.fxt", req.short)),
             },
             parts: vec![],
             pack_handling: false,
+            shop: req.shop,
             weapon_config: {
                 let mut lines = config_lines(r, req.own, req.special, &name, type_id);
                 if let Some(p) = &sound_like {
@@ -566,6 +580,9 @@ impl Injector<'_> {
             &stage.join("Loader.txt"),
             &loader_txt(r, req.own, req.special, &name, req.short, id),
         )?;
+        if req.shop.is_some() {
+            fsutil::write_atomic(&stage.join(format!("{}.fxt", req.short)), &shop_fxt(&m))?;
+        }
         if let Some(dir) = req.cleo {
             crate::injector::copy_cleo(dir, &stage)?;
         }
@@ -576,7 +593,7 @@ impl Injector<'_> {
         io_at(&dest, fs::rename(&stage, &dest))?;
         let _ = fs::remove_dir(ml.join(STAGING));
         self.sync_fla()?;
-        self.sync_trainer()?;
+        self.sync_addons()?;
         Ok(dest)
     }
 

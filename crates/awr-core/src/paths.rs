@@ -33,6 +33,14 @@ impl InstallInfo {
             .filter(|p| p.is_dir())
     }
 
+    /// The Custom Ammu-Nation mod's `ammun.dat`, in one of the ModLoader folders.
+    pub fn ammun_dat(&self) -> Option<PathBuf> {
+        subdirs(self.modloader.as_ref()?)
+            .into_iter()
+            .map(|d| d.join("data/ammun.dat"))
+            .find(|p| p.is_file())
+    }
+
     /// RZL-Trainer's list of added weapons, if the trainer is installed.
     pub fn trainer_ini(&self) -> Option<PathBuf> {
         Some(self.root.join("CLEO/RZL-Trainer/Add-on Weapons.ini")).filter(|p| p.is_file())

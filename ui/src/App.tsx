@@ -5,7 +5,7 @@ import { getLang, setLang, t, type Lang } from "./i18n";
 import { ImportView } from "./ImportView";
 import { InstalledView } from "./InstalledView";
 import { TopBar, type Tab } from "./TopBar";
-import type { ItemDto, ModDto, QItem, Snapshot, TrafficChoice } from "./types";
+import type { ItemDto, ModDto, QItem, Shop, Snapshot, TrafficChoice } from "./types";
 
 interface Toast { id: number; text: string; bad: boolean }
 
@@ -14,6 +14,7 @@ const toQueueItem = (i: ItemDto): QItem => ({
   shortEdited: false,
   special: "none",
   soundLike: "",
+  shop: null,
   include: true,
   traffic: { kind: "auto" },
   audio: true,
@@ -140,6 +141,7 @@ export function App() {
           traffic: i.traffic, audio: i.audio, useHandling: i.useHandling, useCleo: i.useCleo,
           special: i.weapon && i.special !== "none" ? i.special : null,
           soundLike: i.weapon && i.special === "none" && i.soundLike ? i.soundLike : null,
+          shop: i.weapon ? i.shop : null,
         })),
       );
       const ok = results.filter((r) => r.ok).map((r) => r.id);
@@ -166,9 +168,9 @@ export function App() {
     await refresh();
   };
 
-  const onEdit = async (m: ModDto, name: string, traffic: TrafficChoice | null, audio: boolean | null) => {
+  const onEdit = async (m: ModDto, name: string, traffic: TrafficChoice | null, audio: boolean | null, shop: Shop | null) => {
     try {
-      await api.editMod(m.key, name, traffic, audio);
+      await api.editMod(m.key, name, traffic, audio, shop, m.kind === "weapon");
       say(t("{name}: alterações salvas", { name }));
       await refresh();
       return true;
