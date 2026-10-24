@@ -38,7 +38,8 @@
 - [8. Critérios de aceite](#8-critérios-de-aceite)
 - [9. Limites de escopo e evolução](#9-limites-de-escopo-e-evolução)
 - [10. Documentação complementar](#10-documentação-complementar)
-- [11. Autor e licença](#11-autor-e-licença)
+- [11. Créditos e referências](#11-créditos-e-referências)
+- [12. Autor e licença](#12-autor-e-licença)
 
 ## Início rápido
 
@@ -199,7 +200,17 @@ Sem as fixtures do jogo (como na CI), os testes que dependem delas avisam "pulad
 - [docs/UI.md](docs/UI.md): plano do redesign da interface (identidade visual já aplicada; o documento ainda marca como proposta).
 - Tutoriais seguidos: [carros](https://www.mixmods.com.br/2020/02/tutorial-adicionar-carros-sem-substituir/) e [armas](https://www.mixmods.com.br/2019/02/tutorial-adicionar-armas-sem-substituir/) sem substituir (MixMods).
 
-## 11. Autor e licença
+## 11. Créditos e referências
+
+O SA-AWR não inclui nem distribui nenhum destes mods; ele automatiza a configuração deles seguindo os tutoriais do MixMods.
+
+| Projeto | Autoria | Referência |
+| --- | --- | --- |
+| SA Essentials Pack (ModLoader, CLEO e outros mods essenciais) | Pacote organizado por Junior_Djjr (MixMods); o Widescreen Fix é de ThirteenAG | [mixmods.com.br](https://www.mixmods.com.br/2019/06/sa-essentials-pack/) |
+| Open Limit Adjuster (OLA) | LINK/2012, ThirteenAG e Blackbird88 | [mixmods.com.br](https://www.mixmods.com.br/2022/10/open-limit-adjuster/) |
+| fastman92 Limit Adjuster (FLA) | fastman92 | [mixmods.com.br](https://www.mixmods.com.br/2022/01/fastman92-limit-adjuster/) |
+
+## 12. Autor e licença
 
 | Nome | Papel | GitHub |
 | --- | --- | --- |
