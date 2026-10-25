@@ -34,6 +34,9 @@ pub struct InjectClothes<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShopSlots {
     pub section: String,
+    /// `clothes` or `haircuts` (barbers).
+    pub kind: &'static str,
+    /// Places left before the shop menu's 12 per body part; past that only trainers show it.
     pub free: Vec<usize>,
     /// Another mod changes this shop: AWR leaves it alone (ModLoader merges by line position).
     pub blocked: bool,
@@ -46,8 +49,8 @@ pub struct StoreInfo {
     pub models: Vec<(String, u8)>,
     /// Price lines left before the game's limit.
     pub prices_free: usize,
-    /// Another mod changes the clothes prices: no clothes can be added.
-    pub blocked: bool,
+    /// Price sections (`Clothes`, `Haircuts`) another mod changes: nothing of those can be added.
+    pub blocked: Vec<String>,
 }
 
 /// How a new clothing texture compares with the clothes of the CJ in use.
@@ -172,17 +175,33 @@ impl Injector<'_> {
 
     /// Compares a new texture with an original one worn on the same model (or, for an own
     /// model, of the same body part) in the clothes the game will actually load.
-    pub fn texture_fit(&self, txd: &[u8], model: Option<&str>, body_part: u8) -> TextureFit {
+    /// `file` is the new texture's file name: packs replace an original texture of the same
+    /// name, which is the best match (original sizes differ even within one body part).
+    pub fn texture_fit(
+        &self,
+        txd: &[u8],
+        file: Option<&str>,
+        model: Option<&str>,
+        body_part: u8,
+    ) -> TextureFit {
         let have = crate::txd::size(txd);
+        let stem = file.map(|f| f.trim_end_matches(".txd").to_lowercase());
         let want = self.game_shopping().ok().and_then(|game| {
             let originals = stores::originals(&game);
             let same_part = originals.iter().filter(|(_, _, p)| *p == body_part);
+            let same_name = same_part
+                .clone()
+                .filter(|(t, _, _)| Some(t) == stem.as_ref());
             let same_model = same_part
                 .clone()
                 .filter(|(_, m, _)| Some(m.as_str()) == model);
-            same_model.chain(same_part).take(6).find_map(|(tex, _, _)| {
-                crate::txd::size(&self.active_clothing(&format!("{tex}.txd"))?)
-            })
+            same_name
+                .chain(same_model)
+                .chain(same_part)
+                .take(6)
+                .find_map(|(tex, _, _)| {
+                    crate::txd::size(&self.active_clothing(&format!("{tex}.txd"))?)
+                })
         });
         let fit = match (have, want) {
             (Some((w, h)), Some(want)) if (w, h) != want => {
@@ -230,7 +249,8 @@ impl Injector<'_> {
         Ok(StoreInfo {
             shops: stores::shops(&game)
                 .into_iter()
-                .map(|section| ShopSlots {
+                .map(|(section, kind)| ShopSlots {
+                    kind,
                     free: stores::BODY_PARTS
                         .iter()
                         .map(|&p| {
@@ -251,24 +271,16 @@ impl Injector<'_> {
                 m
             },
             prices_free: stores::MAX_PRICES.saturating_sub(stores::prices(&now) + foreign_prices),
-            blocked: is_touched(stores::CLOTHES),
+            blocked: [stores::CLOTHES, stores::HAIRCUTS]
+                .into_iter()
+                .filter(|s| is_touched(s))
+                .map(String::from)
+                .collect(),
         })
     }
 
     /// Checks shops, body part and limits for one item (`skip`: itself, when editing).
     fn check_store(&self, c: &Clothes, skip: Option<&str>) -> Result<()> {
-        let info = self.store_info(skip)?;
-        if info.blocked {
-            return Err(AwrError::InvalidName(
-                "outro mod altera os preços de roupas do shopping.dat; desative-o para adicionar roupas".into(),
-            ));
-        }
-        if skip.is_none() && info.prices_free == 0 {
-            return Err(AwrError::InvalidName(format!(
-                "o shopping.dat já tem {} itens, o limite do jogo",
-                stores::MAX_PRICES
-            )));
-        }
         let part = stores::BODY_PARTS
             .iter()
             .position(|&p| p == c.body_part)
@@ -276,7 +288,21 @@ impl Injector<'_> {
                 AwrError::InvalidName(format!("parte do corpo inválida: {}", c.body_part))
             })?;
         if c.shops.is_empty() {
-            return Err(AwrError::InvalidName("escolha ao menos uma loja".into()));
+            // worn through the wardrobe script only: shopping.dat and its limits are not touched
+            return Ok(());
+        }
+        let info = self.store_info(skip)?;
+        let section = stores::price_section(c.body_part);
+        if info.blocked.iter().any(|b| b == section) {
+            return Err(AwrError::InvalidName(format!(
+                "outro mod altera a seção {section} do shopping.dat; desative-o para adicionar este item"
+            )));
+        }
+        if skip.is_none() && info.prices_free == 0 {
+            return Err(AwrError::InvalidName(format!(
+                "o shopping.dat já tem {} itens, o limite do jogo",
+                stores::MAX_PRICES
+            )));
         }
         for name in &c.shops {
             let s = info
@@ -286,16 +312,26 @@ impl Injector<'_> {
                 .ok_or_else(|| {
                     AwrError::InvalidName(format!("loja de roupas desconhecida: {name}"))
                 })?;
+            if s.kind != stores::shop_type(c.body_part) {
+                return Err(AwrError::InvalidName(format!(
+                    "a loja {name} não vende {}",
+                    if c.body_part == stores::HAIR {
+                        "cortes de cabelo"
+                    } else {
+                        "roupas"
+                    }
+                )));
+            }
             if s.blocked {
                 return Err(AwrError::InvalidName(format!(
                     "outro mod altera a loja {name}; escolha outra"
                 )));
             }
             if s.free[part] == 0 {
-                return Err(AwrError::InvalidName(format!(
-                    "a loja {name} já mostra {} itens dessa parte do corpo",
-                    stores::MAX_PER_PART
-                )));
+                // allowed: the shop menu stops at 12, but trainers list the whole section
+                tracing::warn!(
+                    "loja {name} cheia para essa parte do corpo: só aparece em trainers"
+                );
             }
         }
         Ok(())
@@ -385,7 +421,14 @@ impl Injector<'_> {
         // scaled to the clothes of the CJ in use (game or Retex); the source file is untouched
         let txd = fsutil::read(req.txd)?;
         let model = (req.dff.is_none()).then_some(m.reference.as_str());
-        let txd = match self.texture_fit(&txd, model, req.body_part).fit {
+        let file = req
+            .txd
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned());
+        let txd = match self
+            .texture_fit(&txd, file.as_deref(), model, req.body_part)
+            .fit
+        {
             Fit::Resize { want } => crate::txd::resize(&txd, want.0, want.1).unwrap_or(txd),
             _ => txd,
         };
@@ -400,6 +443,7 @@ impl Injector<'_> {
         io_at(&dest, fs::rename(&stage, &dest))?;
         let _ = fs::remove_dir(stage.parent().unwrap_or(&ml));
         let _ = fs::remove_dir(ml.join(STAGING));
+        self.sync_fla()?;
         self.sync_addons()?;
         Ok(dest)
     }

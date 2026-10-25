@@ -12,6 +12,7 @@ export interface Clothes {
 }
 export interface ShopSlots {
   section: string;
+  kind: "clothes" | "haircuts";
   /** Free places per body part. */
   free: Record<number, number>;
   /** Another mod changes this shop: AWR leaves it alone. */
@@ -22,8 +23,8 @@ export interface StoreInfo {
   /** [model, body part] of the original clothing models. */
   models: [string, number][];
   pricesFree: number;
-  /** Another mod changes the clothes prices: nothing can be added. */
-  blocked: boolean;
+  /** Price sections ("Clothes", "Haircuts") another mod changes: nothing of those can be added. */
+  blocked: string[];
 }
 /** A queued clothing texture against the clothes of the CJ in use. */
 export interface TextureFit {

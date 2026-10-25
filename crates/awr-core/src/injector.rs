@@ -655,9 +655,12 @@ impl Injector<'_> {
         let ml = self.modloader()?;
         let mut needs = Needs::default();
         for m in inventory::scan(&ml).into_iter().filter(|m| m.enabled) {
-            let Some(m) = m.meta.filter(|m| m.kind != ModKind::Clothes) else {
+            let Some(m) = m.meta else { continue };
+            if m.kind == ModKind::Clothes {
+                // each new file takes a place in the game's player.img directory
+                needs.clothing_files += 1 + u32::from(!m.files.dff.is_empty());
                 continue;
-            };
+            }
             let top = m.parts.iter().map(|p| p.id).fold(m.id, u32::max);
             needs.max_model_id = needs.max_model_id.max(Some(top));
             if m.kind == ModKind::Weapon {
@@ -870,12 +873,18 @@ mod tests {
         fs::create_dir_all(d.path().join("models")).unwrap();
         fs::write(
             d.path().join("models/player.img"),
-            crate::img::build(&[("shirt0.txd", &big)]),
+            crate::img::build(&[
+                ("shirt0.txd", &big),
+                ("shirt1.txd", &crate::txd::sample(16, 16, |_| [0; 4])),
+            ]),
         )
         .unwrap();
         let f = d.path().join("new.txd");
         fs::write(&f, crate::txd::sample(4, 4, |_| [9, 9, 9, 255])).unwrap();
-        let fit = inj.texture_fit(&read(&f), Some("tshirt"), 0);
+        // a pack's texture named like an original one is compared with that one
+        let named = inj.texture_fit(&read(&f), Some("SHIRT1.txd"), Some("tshirt"), 0);
+        assert_eq!(named.fit, crate::clothes::Fit::Resize { want: (16, 16) });
+        let fit = inj.texture_fit(&read(&f), None, Some("tshirt"), 0);
         assert_eq!(
             fit,
             crate::clothes::TextureFit {
@@ -917,10 +926,21 @@ mod tests {
         let text = String::from_utf8(read(&ours)).unwrap();
         assert!(text.contains("\t\titem awrtee\r\n\tend"), "{text}");
         assert!(text.contains("awrtee\t\tAWRR001\t\ttshirt\t\t0"), "{text}");
-        // Binco is full now; a texture name of the game and a non-torso model are refused
-        let full = inj.inject_clothes(&req("awrtwo", &binco, &f)).unwrap_err();
-        assert!(full.to_string().contains("12 itens"), "{full}");
+        // Binco is full now: still accepted (only trainers show it); a texture name of the game
+        // and a barber for a shirt are refused
+        inj.inject_clothes(&req("awrfull", &binco, &f)).unwrap();
+        let text = String::from_utf8(read(&ours)).unwrap();
+        assert!(text.contains("\t\titem awrfull\r\n"), "{text}");
         assert!(inj.inject_clothes(&req("shirt3", &didier, &f)).is_err());
+        // no shop: the wardrobe script wears it; nothing goes to shopping.dat
+        let before = read(&ours);
+        let none: [String; 0] = [];
+        inj.inject_clothes(&req("awrfree", &none, &f)).unwrap();
+        assert_eq!(read(&ours), before);
+        let barber = inj
+            .inject_clothes(&req("awrbad", &["barbers".to_string()], &f))
+            .unwrap_err();
+        assert!(barber.to_string().contains("desconhecida"), "{barber}");
         // another mod changing Didier Sachs blocks it
         let other = info.modloader.as_ref().unwrap().join("Other/data");
         fs::create_dir_all(&other).unwrap();

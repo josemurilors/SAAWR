@@ -140,6 +140,8 @@ struct ClothesDto {
 #[serde(rename_all = "camelCase")]
 struct ShopSlotsDto {
     section: String,
+    /// "clothes" or "haircuts".
+    kind: &'static str,
     /// Free places per body part, keyed like `bodyPart`.
     free: HashMap<u8, usize>,
     blocked: bool,
@@ -151,7 +153,8 @@ struct StoreInfoDto {
     shops: Vec<ShopSlotsDto>,
     models: Vec<(String, u8)>,
     prices_free: usize,
-    blocked: bool,
+    /// Price sections ("Clothes", "Haircuts") another mod changes.
+    blocked: Vec<String>,
 }
 
 impl From<StoreInfo> for StoreInfoDto {
@@ -167,6 +170,7 @@ impl From<StoreInfo> for StoreInfoDto {
                         .zip(x.free)
                         .collect(),
                     section: x.section,
+                    kind: x.kind,
                     blocked: x.blocked,
                 })
                 .collect(),
@@ -850,7 +854,15 @@ async fn texture_fit(
         .ok_or("item não está mais na fila")?;
     let bytes = fsutil::read(&txd).map_err(|e| e.to_string())?;
     let model = (!model.is_empty()).then_some(model.as_str());
-    with_injector(&state, |i| Ok(i.texture_fit(&bytes, model, body_part))).map(|f| {
+    with_injector(&state, |i| {
+        Ok(i.texture_fit(
+            &bytes,
+            txd.file_name().and_then(|n| n.to_str()),
+            model,
+            body_part,
+        ))
+    })
+    .map(|f| {
         let (action, want) = match f.fit {
             Fit::Keep => ("keep", None),
             Fit::Resize { want } => ("resize", Some(want)),

@@ -54,7 +54,8 @@ pub struct Clothes {
     /// 0 torso, 2 legs, 3 shoes, 13 necklace, 14 watch, 15 glasses, 16 hat.
     pub body_part: u8,
     pub price: u32,
-    /// Shop sections (`CSchp`, `Csexl`, ...) that sell it.
+    /// Shop sections (`CSchp`, `Csexl`, ...) that sell it; none: only the wardrobe script
+    /// (MoonLoader) puts it on, and `shopping.dat` is not touched.
     pub shops: Vec<String>,
     /// GXT key of its menu name, defined by the mod's `.fxt`.
     pub gxt: String,

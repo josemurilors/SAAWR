@@ -11,7 +11,10 @@ export const BODY_PARTS: [number, string][] = [
   [14, "Relógio"],
   [15, "Óculos"],
   [16, "Chapéu"],
+  [1, "Cabelo"],
 ];
+
+const HAIR = 1;
 
 /** Shop sections as `shopping.dat` names them. */
 const SHOP_LABEL: Record<string, string> = {
@@ -21,6 +24,9 @@ const SHOP_LABEL: Record<string, string> = {
   clothgp: "Zip",
   Csdesgn: "Victim",
   Csexl: "Didier Sachs",
+  barbers: "Barbearia (Los Santos)",
+  barber2: "Barbearia (San Fierro)",
+  barber3: "Barbearia (Las Venturas)",
 };
 
 export const defaultClothes = (ownModel: boolean): Clothes => ({ bodyPart: 0, model: ownModel ? "" : "tshirt", price: 10, shops: [] });
@@ -63,7 +69,9 @@ export function ClothesFields({ value, onChange, ownModel, skip, queueId }: Prop
     set({ shops: on ? [...value.shops, section] : value.shops.filter((s) => s !== section) });
 
   if (error) return <div className="problem">{error}</div>;
-  if (info?.blocked) return <div className="problem">{t("Outro mod altera os preços de roupas do shopping.dat; desative-o para adicionar roupas.")}</div>;
+  const section = value.bodyPart === HAIR ? "Haircuts" : "Clothes";
+  const kind = value.bodyPart === HAIR ? "haircuts" : "clothes";
+  const blocked = info?.blocked.includes(section);
   return (
     <div className="shop">
       <div className="line">
@@ -94,14 +102,15 @@ export function ClothesFields({ value, onChange, ownModel, skip, queueId }: Prop
           <input type="number" min={0} value={value.price} onChange={(e) => set({ price: Math.max(0, Math.floor(Number(e.target.value) || 0)) })} style={{ width: 90 }} />
         </label>
       </div>
+      {blocked && <div className="problem">{t("Outro mod altera a seção {section} do shopping.dat; desative-o para adicionar este item.", { section })}</div>}
       <div className="opts">
-        {(info?.shops ?? []).map((s) => {
+        {(info?.shops ?? []).filter((s) => s.kind === kind).map((s) => {
           const free = s.free[value.bodyPart] ?? 0;
           const on = value.shops.includes(s.section);
-          const why = s.blocked ? t("outro mod altera esta loja") : free === 0 ? t("cheia") : t("{n} vaga(s)", { n: free });
+          const why = s.blocked ? t("outro mod altera esta loja") : free === 0 ? t("cheia: só no trainer") : t("{n} vaga(s)", { n: free });
           return (
             <label key={s.section} title={s.section}>
-              <input type="checkbox" checked={on} disabled={!on && (s.blocked || free === 0)} onChange={(e) => toggleShop(s.section, e.target.checked)} />
+              <input type="checkbox" checked={on} disabled={!on && s.blocked} onChange={(e) => toggleShop(s.section, e.target.checked)} />
               {SHOP_LABEL[s.section] ?? s.section} <span className="meta">({why})</span>
             </label>
           );
@@ -118,7 +127,8 @@ export function ClothesFields({ value, onChange, ownModel, skip, queueId }: Prop
           {t("A textura tem {have}, mas o CJ instalado usa {want}, e ela não pode ser convertida (comprimida ou de outra proporção). No jogo, a roupa pode aparecer como pele.", { have: dims(fit.have), want: dims(fit.want) })}
         </div>
       )}
-      <div className="meta">{t("Cada loja mostra no máximo 12 itens de cada parte do corpo.")}</div>
+      {value.shops.length === 0 && <div className="note">{t("Sem loja: a roupa não entra no shopping.dat (não gasta vagas) e é vestida pelo guarda-roupa do MoonLoader (cheat ROUPA).")}</div>}
+      <div className="meta">{t("Cada loja mostra no máximo 12 itens de cada parte do corpo; numa loja cheia o item só aparece em trainers que listam as lojas (como o RZL-Trainer).")}</div>
     </div>
   );
 }

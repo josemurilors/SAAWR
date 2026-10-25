@@ -1,6 +1,7 @@
 use awr_core::{
     batch,
     checker::{self, Severity},
+    clothes::{Fit, InjectClothes},
     config::AppSettings,
     injector::{InjectVehicle, Injector, Traffic},
     inventory, meta, pack,
@@ -18,6 +19,8 @@ const USAGE: &str = "uso: awr-cli <comando> [--gta <pasta do GTA SA>]
   groups
   weapons
   inject-weapon --short <nome> --ref <ARMA, ex. DESERT_EAGLE> (--pack <pasta> | --dff <arq> --txd <arq>) [--no-pack-lines] [--special silencer|jetpack|binoculars] [--sound-like <ARMA>] [--shop [--price n] [--ammo n] [--category 0-10] [--unlock 0-10]] [--pickup 'x y z [municao]' ...] [--cleo]
+  stores   (lojas de roupa/barbearias, vagas por parte do corpo e limite do shopping.dat)
+  inject-clothes --short <nome> --txd <arq> (--dff <arq> | --model <modelo original>) --part <0 torso|1 cabelo|2 calça|3 sapato|13|14|15|16> --shop <seção, ex. Csexl> [--shop ...] [--price n] [--name <nome na loja>]
   batch <pasta com subpastas> [--ref <modelo padrão>] [--yes]
   enable <pasta do mod>
   disable <pasta do mod>
@@ -224,6 +227,72 @@ fn run(args: &[String]) -> Result<(), String> {
             if !weapons::has_icon(&key.join(format!("{short}.txd")), short) {
                 println!("aviso: o .txd não tem a textura '{short}icon' (ícone do HUD); renomeie a textura do ícone no Magic TXD");
             }
+        }
+        "stores" => {
+            let s = inj.store_info(None).map_err(|e| e.to_string())?;
+            let parts = awr_core::stores::BODY_PARTS;
+            println!("partes: {parts:?}");
+            for x in &s.shops {
+                let lock = if x.blocked {
+                    "  (outro mod altera)"
+                } else {
+                    ""
+                };
+                println!("{:<8} {:<9} vagas {:?}{lock}", x.section, x.kind, x.free);
+            }
+            println!("preços livres até o limite: {}", s.prices_free);
+            if !s.blocked.is_empty() {
+                println!("seções de preço alteradas por outro mod: {:?}", s.blocked);
+            }
+        }
+        "inject-clothes" => {
+            let short = need(args, "--short")?;
+            let txd = PathBuf::from(need(args, "--txd")?);
+            let dff = opt(args, "--dff").map(PathBuf::from);
+            let body_part: u8 = need(args, "--part")?
+                .parse()
+                .map_err(|_| "--part precisa ser um número")?;
+            let shops: Vec<String> = args
+                .windows(2)
+                .filter(|w| w[0] == "--shop")
+                .map(|w| w[1].clone())
+                .collect();
+            let price = opt(args, "--price")
+                .map_or(Ok(10), str::parse)
+                .map_err(|_| "--price inválido")?;
+            let model = opt(args, "--model");
+            let bytes = awr_core::fsutil::read(&txd).map_err(|e| e.to_string())?;
+            match inj.texture_fit(
+                &bytes,
+                txd.file_name().and_then(|n| n.to_str()),
+                model.filter(|_| dff.is_none()),
+                body_part,
+            ) {
+                f if matches!(f.fit, Fit::Resize { .. }) => {
+                    println!("textura {:?}: {:?}", f.have, f.fit)
+                }
+                f if matches!(f.fit, Fit::Mismatch { .. }) => {
+                    println!("aviso: textura {:?} não convertível: {:?}", f.have, f.fit)
+                }
+                _ => {}
+            }
+            let secs = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs());
+            let key = inj
+                .inject_clothes(&InjectClothes {
+                    name: opt(args, "--name").unwrap_or(short),
+                    short,
+                    txd: &txd,
+                    dff: dff.as_deref(),
+                    model,
+                    body_part,
+                    price,
+                    shops: &shops,
+                    created: &meta::rfc3339(secs),
+                })
+                .map_err(|e| e.to_string())?;
+            println!("instalada: {}", key.display());
         }
         "enable" | "disable" => {
             let key = inj

@@ -102,7 +102,7 @@ export function App() {
         .validate(queue.filter((i) => i.include).map((i) => ({ id: i.id, short: i.short, weapon: i.weapon, reference: i.reference, clothes: i.clothes !== null })))
         .then((r) =>
           setProblems(
-            Object.fromEntries(r.map((p) => [p.id, p.problem ?? (queue.find((i) => i.id === p.id)?.clothes?.shops.length === 0 ? t("escolha ao menos uma loja") : null)])),
+            Object.fromEntries(r.map((p) => [p.id, p.problem])),
           ),
         )
         .catch(() => {});

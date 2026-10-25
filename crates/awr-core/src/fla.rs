@@ -41,6 +41,9 @@ pub struct Needs {
     pub pickups: u32,
     pub max_weapon_type: Option<u32>,
     pub max_cargrp_group_len: u32,
+    /// New `.dff`/`.txd` files in `player.img` folders (the game's clothes directory holds
+    /// 550 entries and the original `player.img` already has 542).
+    pub clothing_files: u32,
 }
 
 const HEADROOM: u64 = 16;
@@ -104,6 +107,13 @@ pub fn plan(n: &Needs) -> Vec<Want> {
             "CAR STREAMING",
             "Cargrp cars per group",
             u64::from(n.max_cargrp_group_len) + 4,
+        ));
+    }
+    if n.clothing_files > 0 {
+        out.push(w(
+            "DIRECTORY LIMITS",
+            "Clothes directory",
+            count(550, n.clothing_files, 0),
         ));
     }
     if n.pickups > 0 {
@@ -465,5 +475,15 @@ mod tests {
         assert_eq!(get("Number of bike lines"), Some(50));
         assert_eq!(get("Enable weapon type loader"), None);
         assert!(plan(&Needs::default()).is_empty());
+    }
+
+    #[test]
+    fn clothing_files_raise_the_clothes_directory() {
+        let p = plan(&Needs {
+            clothing_files: 47,
+            ..Needs::default()
+        });
+        assert_eq!(p.len(), 1);
+        assert_eq!((p[0].key, p[0].target), ("Clothes directory", 650));
     }
 }

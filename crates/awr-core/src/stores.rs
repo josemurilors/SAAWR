@@ -4,17 +4,41 @@
 //! ModLoader merges this file line by line *by position*, so a section another mod also
 //! changes can lose lines (and an item without a price crashes the shop). We only add lines at
 //! the end of sections that no other mod touches ([`touched`]).
+//!
+//! Haircuts work the same way, with their own price section and the barber shops.
 
 use crate::meta::Clothes;
 
-/// Body parts a shop sells: torso, legs, shoes, necklace, watch, glasses, hat.
-pub const BODY_PARTS: [u8; 7] = [0, 2, 3, 13, 14, 15, 16];
-/// The shop scripts show at most 12 items of one body part (no original shop has more).
+/// Body parts that can be sold: torso, legs, shoes, necklace, watch, glasses, hat, hair.
+pub const BODY_PARTS: [u8; 8] = [0, 2, 3, 13, 14, 15, 16, HAIR];
+/// Hair is sold by the barbers, from the `Haircuts` prices.
+pub const HAIR: u8 = 1;
+/// The shop scripts show at most 12 items of one body part (no original shop has more);
+/// trainers that list the shop sections show the rest too.
 pub const MAX_PER_PART: usize = 12;
 /// `CShopping` holds 560 price lines for the whole file (gta-reversed `NUM_ITEMS`).
 pub const MAX_PRICES: usize = 560;
 /// The price section the clothes live in.
 pub const CLOTHES: &str = "Clothes";
+pub const HAIRCUTS: &str = "Haircuts";
+
+/// Price section of a body part.
+pub fn price_section(part: u8) -> &'static str {
+    if part == HAIR {
+        HAIRCUTS
+    } else {
+        CLOTHES
+    }
+}
+
+/// Shop type (`type clothes` / `type haircuts`) that sells a body part.
+pub fn shop_type(part: u8) -> &'static str {
+    if part == HAIR {
+        "haircuts"
+    } else {
+        "clothes"
+    }
+}
 
 /// A section inside `section prices` or `section shops`: `body` are its line indices, `end`
 /// the index of its `end` line.
@@ -60,15 +84,14 @@ fn find<'s, 'a>(secs: &'s [Section<'a>], parent: &str, name: &str) -> Option<&'s
         .find(|s| s.parent.eq_ignore_ascii_case(parent) && s.name.eq_ignore_ascii_case(name))
 }
 
-/// `(texture, model, body part)` of every clothing price line.
+/// `(texture, model, body part)` of every clothing and haircut price line.
 pub fn originals(text: &str) -> Vec<(String, String, u8)> {
     let lines: Vec<&str> = text.lines().collect();
     let secs = sections(&lines);
-    let Some(s) = find(&secs, "prices", CLOTHES) else {
-        return vec![];
-    };
-    lines[s.body.clone()]
+    [CLOTHES, HAIRCUTS]
         .iter()
+        .filter_map(|n| find(&secs, "prices", n))
+        .flat_map(|s| &lines[s.body.clone()])
         .filter_map(|l| match words(l)[..] {
             [tex, _, model, part, ..] => {
                 Some((tex.to_lowercase(), model.to_lowercase(), part.parse().ok()?))
@@ -78,21 +101,25 @@ pub fn originals(text: &str) -> Vec<(String, String, u8)> {
         .collect()
 }
 
-/// Section names of the shops that sell clothes (`type clothes`), in file order. `uniform` is
+/// `(section, type)` of the shops that sell clothes or haircuts, in file order. `uniform` is
 /// the missions' outfit list, not a shop.
-pub fn shops(text: &str) -> Vec<String> {
+pub fn shops(text: &str) -> Vec<(String, &'static str)> {
     let lines: Vec<&str> = text.lines().collect();
     sections(&lines)
         .iter()
         .filter(|s| {
             s.parent.eq_ignore_ascii_case("shops") && !s.name.eq_ignore_ascii_case("uniform")
         })
-        .filter(|s| {
-            lines[s.body.clone()]
+        .filter_map(|s| {
+            let kind = lines[s.body.clone()]
                 .iter()
-                .any(|l| words(l)[..] == ["type", "clothes"])
+                .find_map(|l| match words(l)[..] {
+                    ["type", t] if t.eq_ignore_ascii_case("clothes") => Some("clothes"),
+                    ["type", t] if t.eq_ignore_ascii_case("haircuts") => Some("haircuts"),
+                    _ => None,
+                })?;
+            Some((s.name.to_string(), kind))
         })
-        .map(|s| s.name.to_string())
         .collect()
 }
 
@@ -176,8 +203,16 @@ pub fn build(game: &str, items: &[&Clothes]) -> String {
     let secs = sections(&lines);
     // (index of the section's `end` line, lines to put before it)
     let mut inserts: Vec<(usize, Vec<String>)> = vec![];
-    if let Some(s) = find(&secs, "prices", CLOTHES) {
-        inserts.push((s.body.end, items.iter().map(|c| price_line(c)).collect()));
+    for name in [CLOTHES, HAIRCUTS] {
+        let new: Vec<String> = items
+            .iter()
+            // an item no shop sells is worn through the wardrobe script, without a price line
+            .filter(|c| price_section(c.body_part) == name && !c.shops.is_empty())
+            .map(|c| price_line(c))
+            .collect();
+        if let (Some(s), false) = (find(&secs, "prices", name), new.is_empty()) {
+            inserts.push((s.body.end, new));
+        }
     }
     for s in secs
         .iter()
@@ -230,9 +265,14 @@ mod tests {
                 ("legsblack".into(), "legs".into(), 2)
             ]
         );
-        assert_eq!(shops(DAT), ["CSchp"]);
+        assert_eq!(shops(DAT), [("CSchp".to_string(), "clothes")]);
         assert_eq!((count(DAT, "CSchp", 0), count(DAT, "csCHP", 2)), (1, 1));
         assert_eq!(prices(DAT), 3);
+    }
+
+    #[test]
+    fn an_item_without_shops_leaves_the_file_alone() {
+        assert_eq!(build(DAT, &[&shirt(&[])]), DAT);
     }
 
     #[test]
@@ -269,7 +309,16 @@ mod tests {
         ))
         .unwrap();
         let t: String = f.iter().map(|&b| char::from(b)).collect();
-        assert_eq!(shops(&t).len(), 6);
+        assert_eq!(shops(&t).iter().filter(|s| s.1 == "clothes").count(), 6);
+        assert_eq!(shops(&t).iter().filter(|s| s.1 == "haircuts").count(), 3);
+        assert!(originals(&t)
+            .iter()
+            .any(|(t, m, p)| t == "cornrows" && m == "cornrows" && *p == HAIR));
+        let mut hair = shirt(&["barbers"]);
+        hair.body_part = HAIR;
+        let out = build(&t, &[&hair]);
+        assert_eq!(count(&out, "barbers", HAIR), count(&t, "barbers", HAIR) + 1);
+        assert_eq!(touched(&t, &out), ["haircuts", "barbers"]);
         assert_eq!(prices(&t), 544);
         assert_eq!(count(&t, "CSchp", 0), MAX_PER_PART);
         assert_eq!(count(&t, "Csexl", 0), 7);
