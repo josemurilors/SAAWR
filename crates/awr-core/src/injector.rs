@@ -41,6 +41,8 @@ pub struct EditMod<'a> {
     pub shop: Option<Option<crate::meta::Shop>>,
     /// Weapons only: the new list of pickups (`x y z [ammo]` each); `None` leaves them.
     pub pickups: Option<&'a [String]>,
+    /// Clothes only: new price and shops; `None` leaves them.
+    pub clothes: Option<(u32, &'a [String])>,
 }
 
 /// Where the new car shows up in traffic.
@@ -143,6 +145,7 @@ impl Injector<'_> {
         let m = Meta {
             shop: None,
             pickups: vec![],
+            clothes: None,
             v: 1,
             kind: ModKind::Vehicle,
             id,
@@ -260,6 +263,10 @@ impl Injector<'_> {
                 new.files.fxt = Some(name);
             }
         }
+        if let Some(c) = &old.clothes {
+            let (price, shops) = req.clothes.unwrap_or((c.price, &c.shops));
+            self.edit_clothes(key, &mut new, price, shops)?;
+        }
         let enabled = inventory::split_disabled(key).0;
         if enabled {
             self.globals(&old, false)?;
@@ -364,10 +371,14 @@ impl Injector<'_> {
         for m in inventory::scan(&ml).into_iter().filter(|m| !m.is_foreign()) {
             io_at(&m.key, fs::remove_dir_all(&m.key))?;
         }
-        for d in [STAGING, TRAFFIC_DIR] {
+        for d in [STAGING, TRAFFIC_DIR, crate::clothes::STORES_DIR] {
             let _ = fs::remove_dir_all(ml.join(d));
         }
-        for d in [inventory::CARS_DIR, inventory::WEAPONS_DIR] {
+        for d in [
+            inventory::CARS_DIR,
+            inventory::WEAPONS_DIR,
+            inventory::CLOTHES_DIR,
+        ] {
             let _ = fs::remove_dir(ml.join(d)); // only when empty: foreign folders stay
         }
         let mut files: Vec<PathBuf> = self.info.fla_ini().into_iter().collect();
@@ -522,8 +533,10 @@ impl Injector<'_> {
 
     /// Adds (or removes) the mod's lines in the audio cfg and the traffic cargrp.
     fn globals(&self, m: &Meta, add: bool) -> Result<()> {
-        if m.kind == ModKind::Weapon {
-            return self.weapon_globals(m, add);
+        match m.kind {
+            ModKind::Weapon => return self.weapon_globals(m, add),
+            ModKind::Clothes => return Ok(()), // its shop lines come from `sync_stores`
+            ModKind::Vehicle => {}
         }
         let audio_cfg = self
             .info
@@ -586,7 +599,8 @@ impl Injector<'_> {
     pub(crate) fn sync_addons(&self) -> Result<()> {
         self.sync_trainer()?;
         self.sync_shop()?;
-        self.sync_pickups()
+        self.sync_pickups()?;
+        self.sync_stores()
     }
 
     /// Lists the enabled weapons' pickups in `pick-ups.dat` (no-op without the mod).
@@ -641,7 +655,9 @@ impl Injector<'_> {
         let ml = self.modloader()?;
         let mut needs = Needs::default();
         for m in inventory::scan(&ml).into_iter().filter(|m| m.enabled) {
-            let Some(m) = m.meta else { continue };
+            let Some(m) = m.meta.filter(|m| m.kind != ModKind::Clothes) else {
+                continue;
+            };
             let top = m.parts.iter().map(|p| p.id).fold(m.id, u32::max);
             needs.max_model_id = needs.max_model_id.max(Some(top));
             if m.kind == ModKind::Weapon {
@@ -831,6 +847,105 @@ mod tests {
         assert_eq!(read(&info.fla_ini().unwrap()), ini0);
     }
 
+    #[test]
+    fn synthetic_clothes_round_trip_and_shop_limits() {
+        use crate::clothes::{InjectClothes, STORES_DIR};
+        let (d, info, refs) = synthetic_install();
+        let inj = Injector {
+            info: &info,
+            refs: &refs,
+            weapons: &[],
+            id_floor: 12500,
+        };
+        // Binco: one torso place left; Didier: free
+        let racks: String = (0..11).map(|i| format!("\t\titem shirt{i}\n")).collect();
+        let prices: String = (0..11)
+            .map(|i| format!("\t\tshirt{i}\t\tSH{i}\t\ttshirt\t\t0\t\trespect 0 \tsexy 0\t\t10\n"))
+            .collect();
+        let game = format!("section prices\n\tsection Clothes\n{prices}\tend\nend\nsection shops\n\tsection CSchp\n\t\ttype clothes\n{racks}\tend\n\tsection Csexl\n\t\ttype clothes\n\tend\nend\n").replace('\n', "\r\n");
+        let shopping = info.data().join("shopping.dat");
+        fs::write(&shopping, &game).unwrap();
+        // the CJ in use wears 8x8 clothes; the new texture is 4x4, so it is scaled up
+        let big = crate::txd::sample(8, 8, |_| [1, 2, 3, 255]);
+        fs::create_dir_all(d.path().join("models")).unwrap();
+        fs::write(
+            d.path().join("models/player.img"),
+            crate::img::build(&[("shirt0.txd", &big)]),
+        )
+        .unwrap();
+        let f = d.path().join("new.txd");
+        fs::write(&f, crate::txd::sample(4, 4, |_| [9, 9, 9, 255])).unwrap();
+        let fit = inj.texture_fit(&read(&f), Some("tshirt"), 0);
+        assert_eq!(
+            fit,
+            crate::clothes::TextureFit {
+                have: Some((4, 4)),
+                fit: crate::clothes::Fit::Resize { want: (8, 8) }
+            }
+        );
+        fn req<'a>(short: &'a str, shops: &'a [String], txd: &'a Path) -> InjectClothes<'a> {
+            InjectClothes {
+                name: "Camisa Teste",
+                short,
+                txd,
+                dff: None,
+                model: Some("tshirt"),
+                body_part: 0,
+                price: 7,
+                shops,
+                created: "2026-10-25T00:00:00Z",
+            }
+        }
+        let (binco, didier) = (["CSchp".to_string()], ["Csexl".to_string()]);
+        let key = inj.inject_clothes(&req("awrtee", &binco, &f)).unwrap();
+        assert_eq!(
+            crate::txd::size(&read(&key.join("player.img/awrtee.txd"))),
+            Some((8, 8))
+        );
+        assert_eq!(
+            crate::txd::size(&read(&f)),
+            Some((4, 4)),
+            "source untouched"
+        );
+        assert_eq!(read(&key.join("awrtee.fxt")), b"AWRR001 Camisa Teste\r\n");
+        let ours = info
+            .modloader
+            .as_ref()
+            .unwrap()
+            .join(STORES_DIR)
+            .join("data/shopping.dat");
+        let text = String::from_utf8(read(&ours)).unwrap();
+        assert!(text.contains("\t\titem awrtee\r\n\tend"), "{text}");
+        assert!(text.contains("awrtee\t\tAWRR001\t\ttshirt\t\t0"), "{text}");
+        // Binco is full now; a texture name of the game and a non-torso model are refused
+        let full = inj.inject_clothes(&req("awrtwo", &binco, &f)).unwrap_err();
+        assert!(full.to_string().contains("12 itens"), "{full}");
+        assert!(inj.inject_clothes(&req("shirt3", &didier, &f)).is_err());
+        // another mod changing Didier Sachs blocks it
+        let other = info.modloader.as_ref().unwrap().join("Other/data");
+        fs::create_dir_all(&other).unwrap();
+        fs::write(
+            other.join("shopping.dat"),
+            game.replace(
+                "section Csexl\r\n\t\ttype clothes\r\n",
+                "section Csexl\r\n\t\ttype clothes\r\n\t\titem shirt1\r\n",
+            ),
+        )
+        .unwrap();
+        let err = inj.inject_clothes(&req("awrtwo", &didier, &f)).unwrap_err();
+        assert!(err.to_string().contains("Csexl"), "{err}");
+        fs::remove_dir_all(other.parent().unwrap()).unwrap();
+        inj.inject_clothes(&req("awrtwo", &didier, &f)).unwrap();
+
+        let off = inj.set_enabled(&key, false).unwrap();
+        assert!(!String::from_utf8(read(&ours)).unwrap().contains("awrtee"));
+        let on = inj.set_enabled(&off, true).unwrap();
+        inj.remove(&on).unwrap();
+        inj.restore_originals().unwrap();
+        assert!(!info.modloader.as_ref().unwrap().join(STORES_DIR).exists());
+        assert_eq!(read(&shopping), game.as_bytes());
+    }
+
     /// A made-up weapon (and the three add-on mods' files) on top of `synthetic_install`.
     fn synthetic_weapons(root: &Path, info: &InstallInfo) -> Vec<WeaponRef> {
         let put = |to: PathBuf, text: &[u8]| {
@@ -926,6 +1041,7 @@ mod tests {
                 audio: None,
                 shop: None,
                 pickups: Some(&pickups),
+                clothes: None,
             },
         )
         .unwrap();
@@ -994,6 +1110,7 @@ mod tests {
                 audio: None,
                 shop: None,
                 pickups: None,
+                clothes: None,
             },
         )
         .unwrap();
@@ -1457,6 +1574,7 @@ num_colors 1
             &EditMod {
                 shop: None,
                 pickups: None,
+                clothes: None,
                 name: "  Exército ~r~ Novo  ",
                 traffic: Some(Traffic::Group(29)),
                 audio: Some(false),
@@ -1485,6 +1603,7 @@ num_colors 1
             &EditMod {
                 shop: None,
                 pickups: None,
+                clothes: None,
                 name: "Parado",
                 traffic: Some(Traffic::Auto),
                 audio: Some(true),
@@ -1503,6 +1622,7 @@ num_colors 1
                 &EditMod {
                     shop: None,
                     pickups: None,
+                    clothes: None,
                     name: "  ",
                     traffic: None,
                     audio: None

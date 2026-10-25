@@ -13,6 +13,7 @@ pub const FILE: &str = "meta.json";
 pub enum ModKind {
     Vehicle,
     Weapon,
+    Clothes,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -41,6 +42,22 @@ pub struct Shop {
     pub anim: u8,
     pub price: u32,
     pub ammo: u32,
+}
+
+/// A CJ clothing item sold in the clothes shops (see `stores.rs`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Clothes {
+    /// Name of the `.txd` in `player.img`; the item's key in `shopping.dat`.
+    pub texture: String,
+    /// Our own `.dff` (named like the texture) or an original clothing model.
+    pub model: String,
+    /// 0 torso, 2 legs, 3 shoes, 13 necklace, 14 watch, 15 glasses, 16 hat.
+    pub body_part: u8,
+    pub price: u32,
+    /// Shop sections (`CSchp`, `Csexl`, ...) that sell it.
+    pub shops: Vec<String>,
+    /// GXT key of its menu name, defined by the mod's `.fxt`.
+    pub gxt: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -73,6 +90,9 @@ pub struct Meta {
     /// Weapons: pickups placed in the world by the Create Weapon Pickups mod, each `ammo x y z`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pickups: Vec<String>,
+    /// Clothes only; `files.dff` is empty when it uses an original model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clothes: Option<Clothes>,
 }
 
 /// UTC timestamp for `created`, from Unix seconds (civil-from-days, no date crate).
@@ -129,6 +149,7 @@ pub(crate) fn sample(id: u32, short: &str) -> Meta {
         weapon_config: vec![],
         shop: None,
         pickups: vec![],
+        clothes: None,
     }
 }
 

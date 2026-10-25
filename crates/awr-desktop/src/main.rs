@@ -6,6 +6,7 @@ use awr_core::{
     batch::{self, Candidate},
     cargrp::{self, Group},
     checker::{self, Severity},
+    clothes::{Fit, InjectClothes, StoreInfo},
     config::AppSettings,
     fsutil, ide,
     injector::{EditMod, InjectVehicle, Injector, Traffic},
@@ -120,6 +121,70 @@ struct ModDto {
     audio: bool,
     shop: Option<ShopDto>,
     pickups: Vec<String>,
+    clothes: Option<ClothesDto>,
+}
+
+/// How a clothing item is sold (shop sections and body part as in `shopping.dat`).
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ClothesDto {
+    body_part: u8,
+    /// Original model the texture is worn on; empty with the item's own `.dff`.
+    #[serde(default)]
+    model: String,
+    price: u32,
+    shops: Vec<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ShopSlotsDto {
+    section: String,
+    /// Free places per body part, keyed like `bodyPart`.
+    free: HashMap<u8, usize>,
+    blocked: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StoreInfoDto {
+    shops: Vec<ShopSlotsDto>,
+    models: Vec<(String, u8)>,
+    prices_free: usize,
+    blocked: bool,
+}
+
+impl From<StoreInfo> for StoreInfoDto {
+    fn from(s: StoreInfo) -> Self {
+        Self {
+            shops: s
+                .shops
+                .into_iter()
+                .map(|x| ShopSlotsDto {
+                    free: awr_core::stores::BODY_PARTS
+                        .iter()
+                        .copied()
+                        .zip(x.free)
+                        .collect(),
+                    section: x.section,
+                    blocked: x.blocked,
+                })
+                .collect(),
+            models: s.models,
+            prices_free: s.prices_free,
+            blocked: s.blocked,
+        }
+    }
+}
+
+/// A queued clothing texture against the clothes of the CJ in use.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TextureFitDto {
+    have: Option<(u16, u16)>,
+    /// "keep", "resize" or "mismatch".
+    action: &'static str,
+    want: Option<(u16, u16)>,
 }
 
 /// How a weapon is sold (Custom Ammu-Nation).
@@ -165,6 +230,8 @@ struct ItemDto {
     short: String,
     reference: String,
     weapon: bool,
+    /// Only a `.txd`: it can only become clothing.
+    texture_only: bool,
     folder: String,
     extras: Extras,
 }
@@ -201,6 +268,9 @@ struct Check {
     short: String,
     weapon: bool,
     reference: String,
+    /// Clothing has no reference to pick.
+    #[serde(default)]
+    clothes: bool,
 }
 
 #[derive(Deserialize)]
@@ -230,6 +300,9 @@ struct InjectRequest {
     /// Weapons: pickups to place, `x y z [ammo]` each.
     #[serde(default)]
     pickups: Vec<String>,
+    /// Clothing: how it is sold. Present means "inject as clothing".
+    #[serde(default)]
+    clothes: Option<ClothesDto>,
 }
 
 // ---- helpers --------------------------------------------------------------------------
@@ -298,6 +371,7 @@ fn mod_dto(m: &InstalledMod, groups: &[Group]) -> ModDto {
         kind: meta.map(|x| match x.kind {
             ModKind::Vehicle => "vehicle",
             ModKind::Weapon => "weapon",
+            ModKind::Clothes => "clothes",
         }),
         name: meta.map_or_else(
             || {
@@ -323,6 +397,12 @@ fn mod_dto(m: &InstalledMod, groups: &[Group]) -> ModDto {
         audio: meta.is_some_and(|x| x.audio.is_some()),
         shop: meta.and_then(|x| x.shop).map(Into::into),
         pickups: meta.map(|x| x.pickups.clone()).unwrap_or_default(),
+        clothes: meta.and_then(|x| x.clothes.as_ref()).map(|c| ClothesDto {
+            body_part: c.body_part,
+            model: c.model.clone(),
+            price: c.price,
+            shops: c.shops.clone(),
+        }),
     }
 }
 
@@ -411,6 +491,7 @@ fn item_dto(id: u64, c: &Candidate) -> ItemDto {
         short: c.short.clone(),
         reference: c.reference.clone().unwrap_or_default(),
         weapon: c.weapon,
+        texture_only: c.files.dff.is_none(),
         folder: c.folder.display().to_string(),
         extras: Extras {
             parts: c.files.parts.is_some(),
@@ -551,7 +632,7 @@ async fn validate(checks: Vec<Check>, state: State<'_, AppState>) -> Result<Vec<
     Ok(checks
         .iter()
         .map(|c| {
-            let problem = if c.reference.is_empty() {
+            let problem = if c.reference.is_empty() && !c.clothes {
                 Some("escolha a referência".to_string())
             } else if count[c.short.as_str()] > 1 {
                 Some("nome curto repetido na fila".to_string())
@@ -591,50 +672,33 @@ async fn inject(
             });
             continue;
         };
-        let (Some(dff), Some(txd)) = (c.files.dff.as_deref(), c.files.txd.as_deref()) else {
+        let (dff, Some(txd)) = (c.files.dff.as_deref(), c.files.txd.as_deref()) else {
             out.push(InjectResult {
                 id: r.id,
                 ok: false,
-                message: "faltam o .dff ou o .txd".into(),
+                message: "falta o .txd".into(),
             });
             continue;
         };
-        let result = if r.weapon {
-            inj.inject_weapon(&InjectWeapon {
+        let result = if let Some(cl) = &r.clothes {
+            let own = cl.model.is_empty();
+            inj.inject_clothes(&InjectClothes {
                 name: &r.name,
                 short: &r.short,
-                dff,
                 txd,
-                reference: &r.reference,
+                dff: dff.filter(|_| own),
+                model: (!own).then_some(cl.model.as_str()),
+                body_part: cl.body_part,
+                price: cl.price,
+                shops: &cl.shops,
                 created: &created,
-                own: c.files.weapon.as_ref().filter(|_| r.use_handling),
-                special: Special::parse(r.special.as_deref().unwrap_or_default()),
-                sound_like: r.sound_like.as_deref().filter(|s| !s.is_empty()),
-                shop: r.shop.map(Into::into),
-                pickups: &r.pickups,
-                cleo: c.files.cleo.as_deref().filter(|_| r.use_cleo),
             })
+        } else if let Some(dff) = dff {
+            inject_model(&inj, &r, &c, dff, txd, &created)
         } else {
-            let traffic = match (r.traffic.kind.as_str(), r.traffic.index) {
-                ("none", _) => Traffic::None,
-                ("group", Some(i)) => Traffic::Group(i),
-                _ => Traffic::Auto,
-            };
-            inj.inject_vehicle(&InjectVehicle {
-                name: &r.name,
-                short: &r.short,
-                dff,
-                txd,
-                reference: &r.reference,
-                traffic,
-                audio: r.audio,
-                created: &created,
-                paintjobs: c.files.paintjobs.as_deref(),
-                parts: c.files.parts.as_deref(),
-                ivfc: c.files.ivfc.as_deref(),
-                handling: c.files.handling.as_ref().filter(|_| r.use_handling),
-                cleo: c.files.cleo.as_deref().filter(|_| r.use_cleo),
-            })
+            Err(awr_core::AwrError::InvalidName(
+                "só uma .txd: injete como roupa ou junte o .dff".into(),
+            ))
         };
         match result {
             Ok(key) => {
@@ -653,6 +717,54 @@ async fn inject(
         }
     }
     Ok(out)
+}
+
+/// A vehicle or weapon from the queued pack.
+fn inject_model(
+    inj: &Injector,
+    r: &InjectRequest,
+    c: &Candidate,
+    dff: &Path,
+    txd: &Path,
+    created: &str,
+) -> awr_core::Result<PathBuf> {
+    if r.weapon {
+        inj.inject_weapon(&InjectWeapon {
+            name: &r.name,
+            short: &r.short,
+            dff,
+            txd,
+            reference: &r.reference,
+            created,
+            own: c.files.weapon.as_ref().filter(|_| r.use_handling),
+            special: Special::parse(r.special.as_deref().unwrap_or_default()),
+            sound_like: r.sound_like.as_deref().filter(|s| !s.is_empty()),
+            shop: r.shop.map(Into::into),
+            pickups: &r.pickups,
+            cleo: c.files.cleo.as_deref().filter(|_| r.use_cleo),
+        })
+    } else {
+        let traffic = match (r.traffic.kind.as_str(), r.traffic.index) {
+            ("none", _) => Traffic::None,
+            ("group", Some(i)) => Traffic::Group(i),
+            _ => Traffic::Auto,
+        };
+        inj.inject_vehicle(&InjectVehicle {
+            name: &r.name,
+            short: &r.short,
+            dff,
+            txd,
+            reference: &r.reference,
+            traffic,
+            audio: r.audio,
+            created,
+            paintjobs: c.files.paintjobs.as_deref(),
+            parts: c.files.parts.as_deref(),
+            ivfc: c.files.ivfc.as_deref(),
+            handling: c.files.handling.as_ref().filter(|_| r.use_handling),
+            cleo: c.files.cleo.as_deref().filter(|_| r.use_cleo),
+        })
+    }
 }
 
 /// Runs an operation of the injector on the opened game and returns its message.
@@ -686,6 +798,7 @@ async fn edit_mod(
     shop: Option<ShopDto>,
     set_shop: bool,
     pickups: Option<Vec<String>>,
+    clothes: Option<ClothesDto>,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
     let traffic = traffic.map(|t| match (t.kind.as_str(), t.index) {
@@ -702,10 +815,53 @@ async fn edit_mod(
                 audio,
                 shop: set_shop.then(|| shop.map(Into::into)),
                 pickups: pickups.as_deref(),
+                clothes: clothes.as_ref().map(|c| (c.price, &c.shops[..])),
             },
         )
     })
     .map(|()| "salvo".to_string())
+}
+
+/// Free shop places and original models for the clothing form; `skip` is the short of the
+/// item being edited (its own places count as free).
+#[tauri::command]
+async fn store_info(
+    skip: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<StoreInfoDto, String> {
+    with_injector(&state, |i| i.store_info(skip.as_deref())).map(Into::into)
+}
+
+/// Whether the queued item's texture will be scaled to the CJ in use (Proper Player Retex or
+/// the game's own clothes).
+#[tauri::command]
+async fn texture_fit(
+    id: u64,
+    model: String,
+    body_part: u8,
+    state: State<'_, AppState>,
+) -> Result<TextureFitDto, String> {
+    let txd = state
+        .queue
+        .lock()
+        .unwrap()
+        .get(&id)
+        .and_then(|c| c.files.txd.clone())
+        .ok_or("item não está mais na fila")?;
+    let bytes = fsutil::read(&txd).map_err(|e| e.to_string())?;
+    let model = (!model.is_empty()).then_some(model.as_str());
+    with_injector(&state, |i| Ok(i.texture_fit(&bytes, model, body_part))).map(|f| {
+        let (action, want) = match f.fit {
+            Fit::Keep => ("keep", None),
+            Fit::Resize { want } => ("resize", Some(want)),
+            Fit::Mismatch { want } => ("mismatch", Some(want)),
+        };
+        TextureFitDto {
+            have: f.have,
+            action,
+            want,
+        }
+    })
 }
 
 #[tauri::command]
@@ -743,6 +899,8 @@ fn main() {
             set_enabled,
             remove,
             edit_mod,
+            store_info,
+            texture_fit,
             repair,
             restore
         ])

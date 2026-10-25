@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
-  Check, InjectRequest, InjectResult, ItemDto, Problem, Shop, Snapshot, TrafficChoice,
+  Check, Clothes, InjectRequest, InjectResult, ItemDto, Problem, Shop, Snapshot, StoreInfo, TextureFit, TrafficChoice,
 } from "./types";
 import { mockApi } from "./mock";
 
@@ -18,7 +18,11 @@ export interface Api {
   inject(requests: InjectRequest[]): Promise<InjectResult[]>;
   setEnabled(key: string, enabled: boolean): Promise<string>;
   remove(key: string): Promise<string>;
-  editMod(key: string, name: string, traffic: TrafficChoice | null, audio: boolean | null, shop: Shop | null, setShop: boolean, pickups: string[] | null): Promise<string>;
+  editMod(key: string, name: string, traffic: TrafficChoice | null, audio: boolean | null, shop: Shop | null, setShop: boolean, pickups: string[] | null, clothes: Clothes | null): Promise<string>;
+  /** Free shop places for clothing; `skip` is the short of the item being edited. */
+  storeInfo(skip: string | null): Promise<StoreInfo>;
+  /** Whether a queued texture will be scaled to the CJ in use; `model` "" = its own model. */
+  textureFit(id: number, model: string, bodyPart: number): Promise<TextureFit>;
   shopDefaults(reference: string): Promise<Shop>;
   repair(): Promise<string>;
   restore(): Promise<string>;
@@ -36,7 +40,10 @@ const real: Api = {
   inject: (requests) => invoke("inject", { requests }),
   setEnabled: (key, enabled) => invoke("set_enabled", { key, enabled }),
   remove: (key) => invoke("remove", { key }),
-  editMod: (key, name, traffic, audio, shop, setShop, pickups) => invoke("edit_mod", { key, name, traffic, audio, shop, setShop, pickups }),
+  editMod: (key, name, traffic, audio, shop, setShop, pickups, clothes) =>
+    invoke("edit_mod", { key, name, traffic, audio, shop, setShop, pickups, clothes }),
+  storeInfo: (skip) => invoke("store_info", { skip }),
+  textureFit: (id, model, bodyPart) => invoke("texture_fit", { id, model, bodyPart }),
   shopDefaults: (reference) => invoke("shop_defaults", { reference }),
   repair: () => invoke("repair"),
   restore: () => invoke("restore"),

@@ -108,6 +108,9 @@ mod tests {
         let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures"));
         for entry in fs::read_dir(dir).unwrap() {
             let path = entry.unwrap().path();
+            if path.extension().is_some_and(|e| e == "txd") {
+                continue; // binary
+            }
             let bytes = fs::read(&path).unwrap();
             let lf = bytes.iter().filter(|&&b| b == b'\n').count();
             let crlf = bytes.windows(2).filter(|w| w == b"\r\n").count();

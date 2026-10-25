@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { api, errorText, inTauri } from "./api";
+import { defaultClothes } from "./ClothesFields";
 import { getLang, setLang, t, type Lang } from "./i18n";
 import { ImportView } from "./ImportView";
 import { InstalledView } from "./InstalledView";
 import { TopBar, type Tab } from "./TopBar";
-import type { ItemDto, ModDto, QItem, Shop, Snapshot, TrafficChoice } from "./types";
+import type { Clothes, ItemDto, ModDto, QItem, Shop, Snapshot, TrafficChoice } from "./types";
 
 interface Toast { id: number; text: string; bad: boolean }
 
@@ -16,6 +17,8 @@ const toQueueItem = (i: ItemDto): QItem => ({
   soundLike: "",
   shop: null,
   pickups: [],
+  // a lone .txd can only be clothing
+  clothes: i.textureOnly ? defaultClothes(false) : null,
   include: true,
   traffic: { kind: "auto" },
   audio: true,
@@ -60,7 +63,7 @@ export function App() {
       if (!paths.length) return;
       try {
         const items = await api.scanPaths(paths);
-        if (!items.length) return say(t("Nada reconhecido: precisa de uma pasta com .dff e .txd."), true);
+        if (!items.length) return say(t("Nada reconhecido: precisa de uma pasta com .dff e .txd (ou só a .txd de uma roupa)."), true);
         setQueue((q) => [...q, ...items.map(toQueueItem)]);
         setTab("import");
         say(t("{n} item(ns) na fila", { n: items.length }));
@@ -96,8 +99,12 @@ export function App() {
     if (!queue.length) return setProblems({});
     const h = setTimeout(() => {
       api
-        .validate(queue.filter((i) => i.include).map((i) => ({ id: i.id, short: i.short, weapon: i.weapon, reference: i.reference })))
-        .then((r) => setProblems(Object.fromEntries(r.map((p) => [p.id, p.problem]))))
+        .validate(queue.filter((i) => i.include).map((i) => ({ id: i.id, short: i.short, weapon: i.weapon, reference: i.reference, clothes: i.clothes !== null })))
+        .then((r) =>
+          setProblems(
+            Object.fromEntries(r.map((p) => [p.id, p.problem ?? (queue.find((i) => i.id === p.id)?.clothes?.shops.length === 0 ? t("escolha ao menos uma loja") : null)])),
+          ),
+        )
         .catch(() => {});
     }, 200);
     return () => clearTimeout(h);
@@ -144,6 +151,7 @@ export function App() {
           soundLike: i.weapon && i.special === "none" && i.soundLike ? i.soundLike : null,
           shop: i.weapon ? i.shop : null,
           pickups: i.weapon ? i.pickups : [],
+          clothes: i.clothes,
         })),
       );
       const ok = results.filter((r) => r.ok).map((r) => r.id);
@@ -170,9 +178,9 @@ export function App() {
     await refresh();
   };
 
-  const onEdit = async (m: ModDto, name: string, traffic: TrafficChoice | null, audio: boolean | null, shop: Shop | null, pickups: string[] | null) => {
+  const onEdit = async (m: ModDto, name: string, traffic: TrafficChoice | null, audio: boolean | null, shop: Shop | null, pickups: string[] | null, clothes: Clothes | null) => {
     try {
-      await api.editMod(m.key, name, traffic, audio, shop, m.kind === "weapon", pickups);
+      await api.editMod(m.key, name, traffic, audio, shop, m.kind === "weapon", pickups, clothes);
       say(t("{name}: alterações salvas", { name }));
       await refresh();
       return true;

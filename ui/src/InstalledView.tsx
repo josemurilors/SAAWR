@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { t } from "./i18n";
 import { parseTraffic, trafficValue } from "./ImportView";
-import { Copy, FAMILY_LABEL, KindIcon, Trash, WEAPON_CLASS_LABEL, familyOf, kindOf, weaponClass, type Family } from "./Icons";
+import { BODY_PARTS, ClothesFields } from "./ClothesFields";
+import { Copy, FAMILY_LABEL, KindIcon, Trash, WEAPON_CLASS_LABEL, familyOf, modKind, weaponClass, type Family } from "./Icons";
 import { HudPreview, Plate } from "./Plate";
 import { PickupFields, ShopFields } from "./ShopFields";
-import type { GameDto, ModDto, Shop, TrafficChoice } from "./types";
+import type { Clothes, GameDto, ModDto, Shop, TrafficChoice } from "./types";
 
 interface Props {
   mods: ModDto[];
@@ -12,13 +13,14 @@ interface Props {
   onToggle: (m: ModDto) => void;
   onRemove: (m: ModDto) => void;
   onCopy: (text: string) => void;
-  onEdit: (m: ModDto, name: string, traffic: TrafficChoice | null, audio: boolean | null, shop: Shop | null, pickups: string[] | null) => Promise<boolean>;
+  onEdit: (m: ModDto, name: string, traffic: TrafficChoice | null, audio: boolean | null, shop: Shop | null, pickups: string[] | null, clothes: Clothes | null) => Promise<boolean>;
 }
 
 /** Stable across switching a mod off (that renames its folder, so `key` changes). */
 const identOf = (m: ModDto) => `${m.id}-${m.short}`;
 
-const FAMILIES: Family[] = ["car", "bike", "boat", "plane", "weapon"];
+const FAMILIES: Family[] = ["car", "bike", "boat", "plane", "weapon", "clothes"];
+const partLabel = (p: number) => BODY_PARTS.find(([v]) => v === p)?.[1] ?? String(p);
 
 export function InstalledView({ mods, game, onToggle, onRemove, onCopy, onEdit }: Props) {
   const [text, setText] = useState("");
@@ -28,7 +30,7 @@ export function InstalledView({ mods, game, onToggle, onRemove, onCopy, onEdit }
   const shown = useMemo(() => {
     const t = text.trim().toLowerCase();
     return mods.filter((m) => {
-      const f = familyOf(kindOf(m.vehicleType, m.kind === "weapon", m.reference));
+      const f = familyOf(modKind(m));
       const familyOk = !family || (!m.foreign && f === family);
       return familyOk && (!t || m.name.toLowerCase().includes(t));
     });
@@ -104,6 +106,7 @@ function Row({ m, selected, onSelect, onToggle }: { m: ModDto; selected: boolean
     );
   }
   const weapon = m.kind === "weapon";
+  const clothes = m.clothes;
   return (
     <div
       className={`irow ${m.enabled ? "" : "off"} ${selected ? "sel" : ""}`}
@@ -113,12 +116,17 @@ function Row({ m, selected, onSelect, onToggle }: { m: ModDto; selected: boolean
       onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onSelect()}
     >
       <div className="glyph">
-        <KindIcon kind={kindOf(m.vehicleType, weapon, m.reference)} />
+        <KindIcon kind={modKind(m)} />
       </div>
       <div className="ibody">
         <div className="name">{m.name}</div>
         <div className="pills">
-          {weapon ? (
+          {clothes ? (
+            <>
+              <span className="chip accent">{t(partLabel(clothes.bodyPart))}</span>
+              <span className="chip">{t("{n} loja(s) · $ {price}", { n: clothes.shops.length, price: clothes.price })}</span>
+            </>
+          ) : weapon ? (
             <span className="chip accent">{t(WEAPON_CLASS_LABEL[weaponClass(m.reference)])}</span>
           ) : (
             <>
@@ -131,7 +139,7 @@ function Row({ m, selected, onSelect, onToggle }: { m: ModDto; selected: boolean
           <span className="chip">{t("baseado em {ref}", { ref: weapon ? m.reference : m.reference.toLowerCase() })}</span>
         </div>
       </div>
-      <Plate value={weapon ? (m.weaponTypeId ?? "") : (m.id ?? "")} weapon={weapon} dim={!m.enabled} />
+      {!clothes && <Plate value={weapon ? (m.weaponTypeId ?? "") : (m.id ?? "")} weapon={weapon} dim={!m.enabled} />}
       <label className="switch" title={m.enabled ? t("Desligar") : t("Ligar")} onClick={(e) => e.stopPropagation()}>
         <input type="checkbox" checked={m.enabled} onChange={() => onToggle(m)} aria-label={m.enabled ? t("Desligar") : t("Ligar")} />
         <span />
@@ -151,7 +159,10 @@ interface SheetProps {
 
 function EditSheet({ m, game, onClose, onRemove, onCopy, onEdit }: SheetProps) {
   const weapon = m.kind === "weapon";
+  const isClothes = m.clothes !== null;
+  const vehicle = !weapon && !isClothes;
   const [name, setName] = useState(m.name);
+  const [clothes, setClothes] = useState<Clothes | null>(m.clothes);
   const [traffic, setTraffic] = useState<TrafficChoice>(parseTraffic(m.trafficChoice));
   const [audio, setAudio] = useState(m.audio);
   const [shop, setShop] = useState<Shop | null>(m.shop);
@@ -161,19 +172,20 @@ function EditSheet({ m, game, onClose, onRemove, onCopy, onEdit }: SheetProps) {
 
   const dirty =
     name !== m.name ||
-    (!weapon && (trafficValue(traffic) !== m.trafficChoice || audio !== m.audio)) ||
+    (vehicle && (trafficValue(traffic) !== m.trafficChoice || audio !== m.audio)) ||
+    JSON.stringify(clothes) !== JSON.stringify(m.clothes) ||
     (weapon && (JSON.stringify(shop) !== JSON.stringify(m.shop) || JSON.stringify(pickups) !== JSON.stringify(m.pickups)));
 
   const save = async () => {
     setSaving(true);
-    await onEdit(m, name, weapon ? null : traffic, weapon ? null : audio, weapon ? shop : null, weapon ? pickups : null);
+    await onEdit(m, name, vehicle ? traffic : null, vehicle ? audio : null, weapon ? shop : null, weapon ? pickups : null, clothes);
     setSaving(false);
   };
 
   return (
     <aside className="sheet" aria-label={t("Editar {name}", { name: m.name })}>
       <div className="head">
-        <Plate value={weapon ? (m.weaponTypeId ?? "") : (m.id ?? "")} weapon={weapon} big dim={!m.enabled} />
+        {!isClothes && <Plate value={weapon ? (m.weaponTypeId ?? "") : (m.id ?? "")} weapon={weapon} big dim={!m.enabled} />}
         <div className="spacer" />
         <button className="btn quiet small" onClick={onClose} aria-label={t("Fechar")}>
           {t("Fechar")}
@@ -183,7 +195,7 @@ function EditSheet({ m, game, onClose, onRemove, onCopy, onEdit }: SheetProps) {
         <h3>{m.name}</h3>
         <div className="meta">
           {t("{kind} · baseado em {ref} · arquivo {short}", {
-            kind: weapon ? t("arma · {cls}", { cls: t(WEAPON_CLASS_LABEL[weaponClass(m.reference)]) }) : (m.vehicleType ?? t("carro")),
+            kind: isClothes ? t("roupa") : weapon ? t("arma · {cls}", { cls: t(WEAPON_CLASS_LABEL[weaponClass(m.reference)]) }) : (m.vehicleType ?? t("carro")),
             ref: m.reference,
             short: m.short,
           })}
@@ -192,12 +204,16 @@ function EditSheet({ m, game, onClose, onRemove, onCopy, onEdit }: SheetProps) {
       </div>
 
       <label className="fl">
-        {weapon ? t("Nome da arma") : t("Nome no jogo")}
+        {weapon ? t("Nome da arma") : isClothes ? t("Nome na loja") : t("Nome no jogo")}
         <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
       </label>
       {!weapon && <HudPreview name={name} />}
 
-      {!weapon && (
+      {clothes && (
+        <ClothesFields value={clothes} onChange={setClothes} ownModel={clothes.model === m.short} skip={m.short} />
+      )}
+
+      {vehicle && (
         <>
           <label className="fl">
             {t("Aparece no tráfego")}
@@ -244,12 +260,14 @@ function EditSheet({ m, game, onClose, onRemove, onCopy, onEdit }: SheetProps) {
             setAudio(m.audio);
             setShop(m.shop);
             setPickups(m.pickups);
+            setClothes(m.clothes);
           }}
         >
           {t("Desfazer")}
         </button>
       </div>
-      {!weapon && <div className="note">{t("Peças, paintjobs e o modelo não mudam aqui. Para trocar o modelo, exclua e importe de novo.")}</div>}
+      {vehicle && <div className="note">{t("Peças, paintjobs e o modelo não mudam aqui. Para trocar o modelo, exclua e importe de novo.")}</div>}
+      {isClothes && <div className="note">{t("A parte do corpo e o modelo não mudam aqui. Se o CJ estiver vestindo esta roupa num save, tire-a no jogo antes de excluir.")}</div>}
 
       <hr />
       <div className="actions">
@@ -264,7 +282,7 @@ function EditSheet({ m, game, onClose, onRemove, onCopy, onEdit }: SheetProps) {
           </>
         ) : (
           <button className="btn danger" onClick={() => setConfirm(true)}>
-            <Trash /> {weapon ? t("Excluir a arma") : t("Excluir o veículo")}
+            <Trash /> {weapon ? t("Excluir a arma") : isClothes ? t("Excluir a roupa") : t("Excluir o veículo")}
           </button>
         )}
       </div>

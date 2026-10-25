@@ -9,7 +9,7 @@ GTA="${1:?uso: scripts/fixtures.sh <pasta do GTA SA>}"
 OUT="$(cd "$(dirname "$0")/.." && pwd)/fixtures"
 FLA_DIR="$(dirname "$(find "$GTA" -maxdepth 3 -iname '*fastman92limitAdjuster*.asi' | head -1)")"
 
-for f in handling.cfg vehicles.ide carcols.dat cargrp.dat default.ide weapon.dat object.dat; do
+for f in handling.cfg vehicles.ide carcols.dat cargrp.dat default.ide weapon.dat object.dat shopping.dat; do
   cp "$GTA/data/$f" "$OUT/"
 done
 cp "$FLA_DIR/data/gtasa_vehicleAudioSettings.cfg" "$FLA_DIR/data/gtasa_weapon_config.dat" "$OUT/"

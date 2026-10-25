@@ -566,6 +566,7 @@ impl Injector<'_> {
             pack_handling: false,
             shop: req.shop,
             pickups: pickups.clone(),
+            clothes: None,
             weapon_config: {
                 let mut lines = config_lines(r, req.own, req.special, &name, type_id);
                 if let Some(p) = &sound_like {

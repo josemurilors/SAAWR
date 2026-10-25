@@ -22,7 +22,7 @@ const groups = ["workers", "business", "clubbers", "farmers", "beachfolk", "casu
 const mk = (m: Partial<ModDto>): ModDto => ({
   key: "", id: null, enabled: true, foreign: false, kind: "vehicle", name: "", short: "",
   reference: "", vehicleType: "car", weaponTypeId: null, parts: 0, paintjobs: 0, ivfc: false,
-  packHandling: false, traffic: "como a referência", trafficChoice: "auto", audio: true, shop: null, pickups: [], ...m,
+  packHandling: false, traffic: "como a referência", trafficChoice: "auto", audio: true, shop: null, pickups: [], clothes: null, ...m,
 });
 
 let mods: ModDto[] = [
@@ -41,6 +41,8 @@ let mods: ModDto[] = [
   mk({ key: "x6", id: 12409, kind: "weapon", name: "Pump", short: "pump", reference: "SHOTGUN", vehicleType: null, weaponTypeId: 79, traffic: "" }),
   mk({ key: "x7", id: 12410, kind: "weapon", name: "Tinta", short: "tinta", reference: "SPRAYCAN", vehicleType: null, weaponTypeId: 80, traffic: "" }),
   mk({ key: "x8", id: 12411, kind: "weapon", name: "Pack", short: "pack", reference: "JETPACK", vehicleType: null, weaponTypeId: 81, traffic: "" }),
+  mk({ key: "r1", id: null, kind: "clothes", name: "Camiseta AWR", short: "awrtee", reference: "tshirt", vehicleType: null, traffic: "",
+    clothes: { bodyPart: 0, model: "tshirt", price: 15, shops: ["Csexl"] } }),
   mk({ key: "f1", id: 12500, foreign: true, kind: null, name: "12500-spike1", vehicleType: null, traffic: "" }),
 ];
 
@@ -64,7 +66,9 @@ const sample = (): ItemDto[] => [
     extras: { ...none, weaponLines: true } },
   { id: ++nextId, name: "Mod sem referência", short: "semref", reference: "", weapon: false, folder: "C:/mods/x",
     extras: { ...none, cleo: true } },
-];
+  { id: ++nextId, name: "camiseta azul", short: "camiset", reference: "", weapon: false, textureOnly: true, folder: "C:/mods/roupas",
+    extras: none },
+].map((i) => ({ textureOnly: false, ...i }));
 
 export const mockApi: Api = {
   startup: async () => snap(),
@@ -85,7 +89,7 @@ export const mockApi: Api = {
   validate: async (checks) =>
     checks.map((c) => ({
       id: c.id,
-      problem: !c.reference ? "escolha a referência" : c.short === "aug" ? "nome curto já usado" : null,
+      problem: !c.reference && !c.clothes ? "escolha a referência" : c.short === "aug" ? "nome curto já usado" : null,
     })),
   inject: async (reqs) => {
     await delay(900);
@@ -97,11 +101,11 @@ export const mockApi: Api = {
     return key;
   },
   shopDefaults: async (reference) => ({ category: reference === "PISTOL" ? 0 : 7, unlock: 0, anim: 0, price: 1200, ammo: 30 }),
-  editMod: async (key, name, traffic, audio, shop, setShop, pickups) => {
+  editMod: async (key, name, traffic, audio, shop, setShop, pickups, clothes) => {
     await delay(150);
     mods = mods.map((m) =>
       m.key === key
-        ? { ...m, name, audio: audio ?? m.audio, shop: setShop ? shop : m.shop, pickups: pickups ?? m.pickups,
+        ? { ...m, name, audio: audio ?? m.audio, shop: setShop ? shop : m.shop, pickups: pickups ?? m.pickups, clothes: clothes ?? m.clothes,
             trafficChoice: traffic ? (traffic.kind === "group" ? `group:${traffic.index}` : traffic.kind) : m.trafficChoice,
             traffic: traffic ? (traffic.kind === "none" ? "sem tráfego" : traffic.kind === "auto" ? "como a referência" : `grupo ${traffic.index}`) : m.traffic }
         : m,
@@ -113,6 +117,23 @@ export const mockApi: Api = {
     mods = mods.filter((m) => m.key !== key);
     return "removido";
   },
+  storeInfo: async () => {
+    await delay(100);
+    const full = { 0: 0, 2: 0, 3: 3, 13: 10, 14: 10, 15: 5, 16: 0 };
+    return {
+      shops: [
+        { section: "CSchp", free: full, blocked: false },
+        { section: "CSsprt", free: { ...full, 2: 5 }, blocked: false },
+        { section: "Csexl", free: { ...full, 0: 5 }, blocked: false },
+        { section: "clothgp", free: { ...full, 0: 0, 3: 8 }, blocked: true },
+      ],
+      models: [["tshirt", 0], ["vest", 0], ["hoodyA", 0], ["legs", 2], ["shorts", 2], ["sneaker", 3], ["glasses01", 15], ["capknit", 16]],
+      pricesFree: 3,
+      blocked: false,
+    };
+  },
+  textureFit: async (_id, _model, bodyPart) =>
+    bodyPart === 2 ? { have: [256, 256], action: "mismatch", want: [512, 1024] } : { have: [256, 256], action: "resize", want: [1024, 1024] },
   restore: async () => "restaurado (3 arquivo(s) do .bak)",
   repair: async () => "reparado (0 injeção(ões) interrompida(s) limpa(s))",
 };

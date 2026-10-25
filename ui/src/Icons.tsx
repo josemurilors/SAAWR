@@ -4,9 +4,9 @@ export type VehicleKind = "car" | "bike" | "boat" | "plane";
 export type WeaponClass =
   | "melee" | "pistol" | "smg" | "shotgun" | "rifle" | "sniper" | "launcher" | "thrown" | "heavy" | "spray" | "gear";
 /** What an icon can draw. */
-export type Kind = VehicleKind | WeaponClass;
+export type Kind = VehicleKind | WeaponClass | "clothes";
 /** Filter families of the Instalados tab. */
-export type Family = VehicleKind | "weapon";
+export type Family = VehicleKind | "weapon" | "clothes";
 
 const WEAPON_CLASSES: Record<string, WeaponClass> = {
   PISTOL: "pistol", PISTOL_SILENCED: "pistol", DESERT_EAGLE: "pistol",
@@ -43,7 +43,12 @@ export function kindOf(vehicleType: string | null | undefined, weapon = false, r
   }
 }
 
-export const familyOf = (k: Kind): Family => (k === "car" || k === "bike" || k === "boat" || k === "plane" ? k : "weapon");
+export const familyOf = (k: Kind): Family =>
+  k === "car" || k === "bike" || k === "boat" || k === "plane" || k === "clothes" ? k : "weapon";
+
+/** Icon of an installed mod. */
+export const modKind = (m: { kind: string | null; vehicleType: string | null; reference: string }): Kind =>
+  m.kind === "clothes" ? "clothes" : kindOf(m.vehicleType, m.kind === "weapon", m.reference);
 
 export const FAMILY_LABEL: Record<Family, string> = {
   car: "Carros",
@@ -51,6 +56,7 @@ export const FAMILY_LABEL: Record<Family, string> = {
   boat: "Barcos",
   plane: "Aviões",
   weapon: "Armas",
+  clothes: "Roupas",
 };
 
 export const WEAPON_CLASS_LABEL: Record<WeaponClass, string> = {
@@ -85,6 +91,7 @@ const PATHS: Record<Kind, string> = {
   heavy: "M3 14h20M3 18h20M3 22h20M23 12v12h5V12zM28 18h4M10 24l-1 5h4l1-5",
   spray: "M11 12h11v17H11zM13 8h7v4h-7zM22 17h5M26 14l3-2M26 20l3 2",
   gear: "M11 14a6 6 0 100 12 6 6 0 000-12zM23 14a6 6 0 100 12 6 6 0 000-12zM17 20h0M5 20H2M29 20h3M11 14V9h12v5",
+  clothes: "M12 5l-8 5 3 5 3-2v16h14V13l3 2 3-5-8-5c-1 3-3 4-5 4s-4-1-5-4z",
 };
 
 export function KindIcon({ kind, ...p }: { kind: Kind } & SVGProps<SVGSVGElement>) {

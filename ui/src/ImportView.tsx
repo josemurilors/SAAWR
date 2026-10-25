@@ -1,5 +1,6 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { inTauri } from "./api";
+import { ClothesFields, defaultClothes } from "./ClothesFields";
 import { t } from "./i18n";
 import { Close, Folder, KindIcon, Upload, WEAPON_CLASS_LABEL, kindOf, weaponClass } from "./Icons";
 import { HudPreview } from "./Plate";
@@ -101,7 +102,8 @@ export function ImportView(p: Props) {
 
 function QueueRow({ item, game, problem, p }: { item: QItem; game: GameDto | null; problem: string | null; p: Props }) {
   const patch = (x: Partial<QItem>) => p.onPatch(item.id, x);
-  const kind = kindOf(game?.refs.find((r) => r.model === item.reference)?.kind, item.weapon, item.reference);
+  const clothes = item.clothes !== null;
+  const kind = clothes ? "clothes" : kindOf(game?.refs.find((r) => r.model === item.reference)?.kind, item.weapon, item.reference);
   const setSpecial = (special: Special) => {
     const forced = special === "jetpack" ? "JETPACK" : special === "binoculars" ? "NIGHTVISION" : null;
     const ok = forced && game?.weapons.some((w) => w.name === forced);
@@ -143,13 +145,22 @@ function QueueRow({ item, game, problem, p }: { item: QItem; game: GameDto | nul
 
         <div className="line">
           <div className="seg" role="group" aria-label={t("Tipo")}>
-            <button className={!item.weapon ? "on" : ""} onClick={() => item.weapon && patch({ weapon: false, reference: "" })}>
-              {t("Veículo")}
-            </button>
-            <button className={item.weapon ? "on" : ""} onClick={() => item.weapon || patch({ weapon: true, reference: "" })}>
-              {t("Arma")}
+            {!item.textureOnly && (
+              <>
+                <button className={!item.weapon && !clothes ? "on" : ""} onClick={() => patch({ weapon: false, clothes: null, reference: "" })}>
+                  {t("Veículo")}
+                </button>
+                <button className={item.weapon && !clothes ? "on" : ""} onClick={() => patch({ weapon: true, clothes: null, reference: "" })}>
+                  {t("Arma")}
+                </button>
+              </>
+            )}
+            <button className={clothes ? "on" : ""} onClick={() => clothes || patch({ weapon: false, clothes: defaultClothes(!item.textureOnly), reference: "" })}>
+              {t("Roupa")}
             </button>
           </div>
+          {!clothes && (
+          <>
           <label className="fl">
             {t("Baseado em")}
             <select value={item.reference} onChange={(e) => patch({ reference: e.target.value })}>
@@ -205,11 +216,22 @@ function QueueRow({ item, game, problem, p }: { item: QItem; game: GameDto | nul
               </select>
             </label>
           )}
+          </>
+          )}
         </div>
+        {clothes && (
+          <ClothesFields value={item.clothes!} queueId={item.id} ownModel={!item.textureOnly && item.clothes!.model === ""} onChange={(c) => patch({ clothes: c })} />
+        )}
+        {clothes && !item.textureOnly && (
+          <label className="check">
+            <input type="checkbox" checked={item.clothes!.model !== ""} onChange={(e) => patch({ clothes: { ...item.clothes!, model: e.target.checked ? "tshirt" : "", bodyPart: 0, shops: [] } })} />
+            {t("Usar só a textura, num modelo original")}
+          </label>
+        )}
         {item.weapon && hint && <div className="meta">{t(hint)}</div>}
 
         <div className="opts">
-          {!item.weapon && item.extras.handling && (
+          {!item.weapon && !clothes && item.extras.handling && (
             <label>
               <input type="checkbox" checked={item.useHandling} onChange={(e) => patch({ useHandling: e.target.checked })} />
               {t("Usar o handling do pacote")}
@@ -221,13 +243,13 @@ function QueueRow({ item, game, problem, p }: { item: QItem; game: GameDto | nul
               {t("Usar as linhas de arma do pacote")}
             </label>
           )}
-          {item.extras.cleo && (
+          {!clothes && item.extras.cleo && (
             <label>
               <input type="checkbox" checked={item.useCleo} onChange={(e) => patch({ useCleo: e.target.checked })} />
               {t("Copiar scripts CLEO")}
             </label>
           )}
-          {!item.weapon && (
+          {!item.weapon && !clothes && (
             <label>
               <input type="checkbox" checked={item.audio} onChange={(e) => patch({ audio: e.target.checked })} />
               {t("Clonar o som do motor")}
@@ -242,7 +264,9 @@ function QueueRow({ item, game, problem, p }: { item: QItem; game: GameDto | nul
           <div className="problem">{problem}</div>
         ) : (
           <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
-            {item.weapon ? (
+            {clothes ? (
+              <span className="chip accent">{item.textureOnly || item.clothes!.model ? t("textura nova num modelo original") : t("modelo e textura novos")}</span>
+            ) : item.weapon ? (
               <>
                 <span className="chip accent">{t(WEAPON_CLASS_LABEL[weaponClass(item.reference)])}</span>
                 <span className="chip">{t("o ícone do HUD é renomeado sozinho")}</span>

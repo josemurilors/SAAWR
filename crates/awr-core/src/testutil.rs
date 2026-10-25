@@ -1,8 +1,9 @@
 use std::path::Path;
 
 /// Game files (Rockstar, fastman92) that are never committed.
-const GAME_FIXTURES: [&str; 11] = [
+const GAME_FIXTURES: [&str; 12] = [
     "handling.cfg",
+    "shopping.dat",
     "vehicles.ide",
     "carcols.dat",
     "cargrp.dat",

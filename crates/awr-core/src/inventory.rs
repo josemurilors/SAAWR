@@ -5,6 +5,8 @@ use std::{fs, path::Path, path::PathBuf};
 
 pub const CARS_DIR: &str = "awr-cars";
 pub const WEAPONS_DIR: &str = "awr-weapons";
+/// Clothes folders are named by their short alone: they have no model ID.
+pub const CLOTHES_DIR: &str = "awr-roupas";
 /// ModLoader skips folders whose name starts with dot + space.
 pub const DISABLED_PREFIX: &str = ". ";
 
@@ -28,7 +30,7 @@ impl InstalledMod {
 }
 
 pub fn scan(modloader: &Path) -> Vec<InstalledMod> {
-    let mut out: Vec<InstalledMod> = [CARS_DIR, WEAPONS_DIR]
+    let mut out: Vec<InstalledMod> = [CARS_DIR, WEAPONS_DIR, CLOTHES_DIR]
         .iter()
         .flat_map(|d| read_dirs(&modloader.join(d)))
         .map(|key| {

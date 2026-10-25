@@ -130,7 +130,8 @@ pub fn scan(dir: &Path, refs: &[VehicleRef], taken: &BTreeSet<String>) -> Vec<Ca
 }
 
 /// Everything the user dropped or picked: pack folders, folders of packs, loose `.dff` +
-/// `.txd` pairs. A `.dff` named after an original weapon model becomes a weapon.
+/// `.txd` pairs, lone `.txd`s (clothes). A `.dff` named after an original weapon model
+/// becomes a weapon.
 /// `taken` grows with the shorts handed out, so a whole drop gets distinct names.
 pub fn from_paths(
     paths: &[PathBuf],
@@ -170,6 +171,31 @@ pub fn from_paths(
             name,
             short,
             files,
+        });
+    }
+    // a lone `.txd` can only be clothing: a new texture over an original model
+    let paired = |t: &PathBuf| {
+        paths
+            .iter()
+            .any(|d| is(d, "dff") && d.file_stem() == t.file_stem())
+    };
+    for txd in paths.iter().filter(|p| is(p, "txd") && !paired(p)) {
+        let name = txd
+            .file_stem()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let short = suggest_short(&name, taken);
+        taken.insert(short.clone());
+        found.push(Candidate {
+            folder: txd.parent().map(Path::to_path_buf).unwrap_or_default(),
+            reference: None,
+            weapon: false,
+            name,
+            short,
+            files: PackFiles {
+                txd: Some(txd.clone()),
+                ..Default::default()
+            },
         });
     }
     for c in found.iter_mut().filter(|c| c.reference.is_none()) {
@@ -244,6 +270,22 @@ mod tests {
             "pistola_parabe2"
         );
         assert_eq!(suggest_weapon_name("9mm", &set(&[])), "wpn9mm");
+    }
+
+    #[test]
+    fn a_lone_txd_becomes_a_texture_only_candidate() {
+        let p = |s: &str| PathBuf::from(s);
+        let found = from_paths(
+            &[p("x/carro.dff"), p("x/carro.txd"), p("x/Camiseta.txd")],
+            &[],
+            &[],
+            &mut set(&[]),
+        );
+        let view: Vec<_> = found
+            .iter()
+            .map(|c| (c.short.as_str(), c.files.dff.is_some()))
+            .collect();
+        assert_eq!(view, [("carro", true), ("camiset", false)]);
     }
 
     #[test]
