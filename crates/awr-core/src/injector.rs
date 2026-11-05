@@ -1116,7 +1116,7 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::permissions_set_readonly_false)] // Windows-only app; undoes the lock below
+    #[allow(clippy::permissions_set_readonly_false)] // undoes the lock below
     fn a_failed_remove_keeps_the_folder_so_repair_can_clean_up() {
         let (d, info, refs) = synthetic_install();
         let inj = Injector {
@@ -1129,13 +1129,20 @@ mod tests {
         let audio0 = read(&audio);
         let f = d.path().join("gta_sa.exe");
         let key = inj.inject_vehicle(&req("mycar", "testcar", &f)).unwrap();
-        // a read-only audio cfg cannot be replaced, so removing its line fails
-        let mut perm = fs::metadata(&audio).unwrap().permissions();
+        // a locked audio cfg cannot be replaced, so removing its line fails. Windows blocks the
+        // rename over a read-only file; Unix only checks the folder, so lock that there.
+        let lock = if cfg!(windows) {
+            audio.clone()
+        } else {
+            audio.parent().unwrap().to_path_buf()
+        };
+        let mut perm = fs::metadata(&lock).unwrap().permissions();
         perm.set_readonly(true);
-        fs::set_permissions(&audio, perm.clone()).unwrap();
-        assert!(inj.remove(&key).is_err());
+        fs::set_permissions(&lock, perm.clone()).unwrap();
+        let failed = inj.remove(&key).is_err();
         perm.set_readonly(false);
-        fs::set_permissions(&audio, perm).unwrap();
+        fs::set_permissions(&lock, perm).unwrap();
+        assert!(failed);
         assert!(key.join(meta::FILE).is_file(), "the meta.json must survive");
         inj.remove(&key).unwrap();
         assert_eq!(read(&audio), audio0);
