@@ -18,15 +18,16 @@
 
 | | |
 | --- | --- |
-| **Versão** | 0.2.0 (v2, reescrita do zero) |
+| **Versão** | 0.3.0 (v2, reescrita do zero) |
 | **Estado** | Veículos (carro, moto, barco, avião) e armas (pistola, fuzil, corpo a corpo) prontos e testados no jogo, com CLI e interface; release e polimento pendentes |
 | **Contexto** | Projeto pessoal; segue os tutoriais MixMods de carros e armas sem substituir |
-| **Alvo** | Windows, GTA SA 1.0 US com ModLoader + fastman92 Limit Adjuster + Open Limit Adjuster |
+| **Alvo** | Windows e Linux (AppImage), GTA SA 1.0 US com ModLoader + fastman92 Limit Adjuster + Open Limit Adjuster |
 
 > **Ele escreve no jogo.** Injetar, ligar/desligar e remover mexem em arquivos da pasta `modloader` e do FLA (com `.bak` do original). Use sempre uma cópia da pasta do jogo enquanto o projeto é jovem.
 
 ## Sumário
 
+- [Download](#download)
 - [Início rápido](#início-rápido)
 - [1. Objetivo](#1-objetivo)
 - [2. Princípios](#2-princípios)
@@ -40,6 +41,19 @@
 - [10. Documentação complementar](#10-documentação-complementar)
 - [11. Créditos e referências](#11-créditos-e-referências)
 - [12. Autor e licença](#12-autor-e-licença)
+
+## Download
+
+Baixe a última versão em [Releases](https://github.com/josemurilors/SAAWR/releases/latest):
+
+- **Windows:** `SA-AWR-vX.Y.Z-windows.zip`. Extraia e abra o `SA-AWR.exe` (portable, sem instalador).
+- **Linux:** `SA-AWR-vX.Y.Z-linux-x86_64.AppImage`. Dê permissão e abra:
+
+  ```bash
+  chmod +x SA-AWR-*-linux-x86_64.AppImage && ./SA-AWR-*-linux-x86_64.AppImage
+  ```
+
+  No Linux, aponte o app para a pasta do jogo que você roda pelo Wine, Proton ou Lutris (ex.: `~/.wine/drive_c/Games/GTA San Andreas`). O Linux diferencia maiúsculas: a ferramenta procura `gta_sa.exe`, `data`, `modloader` e `CLEO` com a grafia padrão do jogo. Se a sua cópia tiver outra grafia (ex.: `Data`, `ModLoader`), renomeie antes. Distros sem FUSE 2 rodam com `--appimage-extract-and-run`.
 
 ## Início rápido
 
@@ -75,7 +89,10 @@ O SA-AWR automatiza o método "adicionar sem substituir" dos tutoriais MixMods. 
 - **Scripts CLEO do pacote:** a pasta `CLEO` do pacote (`.cs` ou `.cleo`) pode ser copiada, de forma opcional, para a pasta do mod, em veículos e armas (caixa na interface, `--cleo` na CLI).
 - **Custom Ammu-Nation Mod:** armas podem ir para a loja ([mod do cjfan](https://www.mixmods.com.br/2022/01/custom-ammunation-mod-adicionar-armas-pra-comprar/)): categoria, desbloqueio, preço e munição na importação e na edição (`--shop [--price n --ammo n --category 0-10 --unlock 0-10]` na CLI), com valores sugeridos pela arma de referência. As linhas entram num bloco `# AWR-BEGIN`/`# AWR-END` do `data/ammun.dat` do mod, o nome vem de um `.fxt` da própria arma (chave `AWR{tipo}`) e tudo sai ao desligar, remover ou restaurar. Sem o mod instalado, nada é escrito. Não testado no jogo.
 - **Pickups de arma no mapa:** com o [Create Weapon Pickups](https://www.mixmods.com.br/2018/04/criar-pick-ups-de-armas-editando-um-arquivo-dat/) (Um Geek) instalado, cada arma pode ter pickups em coordenadas `x y z [munição]` (um por linha na interface, `--pickup` repetido na CLI). As linhas entram num bloco `# AWR-BEGIN`/`# AWR-END` dentro das chaves do `pick-ups.dat` (o tipo da arma, não o ID do modelo), e o FLA recebe `Enable pickup limit patch` e `Pickups` maior, como o autor pede. Não testado no jogo; o autor relata bug com 8 pickups novos sem esse ajuste.
-- **Roupas novas do CJ (sem substituir):** solte o `.dff` + `.txd` de uma roupa, ou só a `.txd` (textura nova vestida num modelo original), e escolha "Roupa": parte do corpo, preço e as lojas que vendem. Os arquivos vão para `modloader/awr-roupas/{short}/player.img/`, o nome na loja vem de um `.fxt` (chave `AWRR001`…) e as linhas de preço e de loja entram num `shopping.dat` único em `modloader/awr-lojas/data`, refeito a partir do original do jogo. Limites do jogo: cada loja mostra no máximo 12 itens por parte do corpo, e o `shopping.dat` inteiro aceita 560 preços (o original usa 544). O ModLoader junta o `shopping.dat` linha a linha por posição, então lojas que outro mod altera ficam bloqueadas. A textura precisa ter o tamanho das roupas do CJ em uso, então o app compara com a roupa original equivalente no `player.img` que o jogo carrega (o do Proper Player Retex, se houver) e, se o tamanho for diferente, avisa na fila e amplia ou reduz uma cópia ao injetar; texturas comprimidas ou de outra proporção só geram o aviso. Testado no jogo à mão (camiseta na Didier Sachs); a injeção pelo app ainda não. Cortes de cabelo também (seção `Haircuts`, vendidos nas barbearias). Uma loja cheia ainda pode receber o item, que então só aparece em trainers que listam as lojas, como o RZL-Trainer. Na CLI: `stores` mostra as vagas e `inject-clothes` instala. Sem nenhuma loja marcada, o item não entra no `shopping.dat` (não gasta vagas) e é vestido pelo guarda-roupa do MoonLoader, [extras/moonloader/awr-guarda-roupa.lua](extras/moonloader/awr-guarda-roupa.lua): copie para a pasta `moonloader` do jogo e, a pé, digite o cheat `ROUPA` (setas esquerda/direita trocam, cima veste, baixo cancela). O diretório de roupas do jogo cabe 550 arquivos e o `player.img` original já usa 542; por isso o app liga e aumenta o `Clothes directory` do FLA conforme os `.dff`/`.txd` instalados (sem isso, o ModLoader não registra as roupas e vesti-las derruba o jogo). Rodas novas ficaram para depois.
+- **Roupas, cabelos e acessórios novos do CJ (sem substituir):** solte a pasta de um pacote (ou os arquivos): o app reconhece as texturas com nome de roupa do jogo (`hoodyablack`, `watchyellow`, `cornrows`...) e **sugere** a parte do corpo, o modelo, o preço e as lojas do item original; você troca qualquer um. Um pacote com várias texturas vira um item por textura; `.dff` próprio ou só a `.txd` sobre um modelo original, tudo funciona. Os arquivos vão para `modloader/awr-roupas/{nome}/player.img/` e o nome na loja vem de um `.fxt` (chave `AWRR001`...).
+  - **Catálogo em CLEO, não o `shopping.dat`:** o jogo mostra no máximo 12 itens por parte do corpo, aceita 560 preços e o ModLoader junta o `shopping.dat` por posição de linha (um mod apaga o item do outro). Por isso nada novo entra nesse arquivo: o app instala um script CLEO ([extras/cleo/awr-roupas.sc](extras/cleo/awr-roupas.sc), compilado com [scripts/build-cleo.sh](scripts/build-cleo.sh)) em `modloader/awr-lojas`, que só existe enquanto houver roupa instalada, e escreve a lista em `CLEO/AWR-Roupas/awr-roupas.ini`. Dentro de uma loja de roupas ou barbearia, a tecla **N** (ou digitar **LOJA**) abre o catálogo no mesmo estilo de menu do jogo, com páginas, prévia no CJ, compra e marca do que já foi comprado. Digitar **ROUPA** abre o guarda-roupa (itens sem loja, de graça, e os já comprados). **AWRINFO** mostra o interior e as coordenadas e **AWRCAL** calibra a loja onde você está (grava em `estado.ini`, onde ficam também as compras; o app nunca escreve nele; `[Config] WardrobeAll=1` mostra tudo no guarda-roupa). Precisa de CLEO 4 com o plugin IniFiles.
+  - **Texturas:** o jogo mistura a roupa com a pele pixel a pixel, então a textura precisa ter o tamanho das roupas do CJ em uso. O app compara com a roupa original equivalente no `player.img` que o jogo carrega (o do Proper Player Retex, se houver) e, se for diferente, avisa na fila e amplia ou reduz uma cópia ao injetar (também tira os mipmaps); texturas comprimidas ou de outra proporção só geram o aviso. O diretório de roupas do jogo cabe 550 arquivos e o `player.img` original já usa 542: o app liga e aumenta o `Clothes directory` do FLA conforme os `.dff`/`.txd` instalados (sem isso, vestir a roupa derruba o jogo).
+  - Na CLI: `stores` mostra as lojas, `clothes <pasta> [--yes]` instala um pacote inteiro com as sugestões e `inject-clothes` instala um item. Os interiores e as coordenadas das lojas vêm da [wiki do MTA](https://wiki.multitheftauto.com/wiki/Interior_IDs). O script CLEO ainda não foi testado no jogo (os mesmos comandos de roupa já funcionaram num guarda-roupa em Lua).
 - **Interface em português e inglês:** seletor PT/EN no topo (lembra a escolha; sem escolha, segue o idioma do sistema). As mensagens de erro e avisos que vêm do núcleo em Rust continuam em português.
 - **Som da arma:** dá para herdar som e comportamento de outra arma (campo "Som e comportamento iguais a" na interface, `--sound-like` na CLI) em vez da referência; sons próprios (WAVs) ainda não, veja [docs/AUDIO.md](docs/AUDIO.md).
 - **Adotar pasta sem `meta.json`:** `awr-cli adopt <pasta>` refaz o registro de um carro ou arma que já está em `awr-cars`/`awr-weapons` (lê o `.ide`/`linhas.txt`, o áudio, o tráfego e a linha do `weapon_config`) para que a ferramenta volte a ligar, editar e remover. Sem `--yes` só mostra o que seria gravado; carros pedem `--ref`. Não mexe nos arquivos do jogo, não reconhece peças de tuning e só vale para essas duas pastas (mods soltos no ModLoader continuam intocados). Só CLI por enquanto.
@@ -119,7 +136,7 @@ flowchart LR
 | Estado | `serde` + `serde_json` | `meta.json` e configuração |
 | Config | `directories` | Pasta de configuração do usuário |
 | Testes | `tempfile` + fixtures golden | Comparação byte a byte |
-| CI | GitHub Actions (Windows) | `fmt`, `clippy -D warnings`, `test` |
+| CI | GitHub Actions (Windows e Ubuntu) | `fmt`, `clippy -D warnings`, `test`; release publica `.zip` (Windows) e AppImage (Linux) |
 
 ## 4. Estrutura do repositório
 
@@ -159,6 +176,7 @@ Os testes não substituem o teste no jogo. O formato de pasta do ModLoader, o ha
 ### Pré-requisitos
 
 - Rust estável ≥ 1.80 (testado com 1.99) e Git Bash, para o script de fixtures.
+- No Linux, as bibliotecas do Tauri: `sudo apt install libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf` (Debian/Ubuntu).
 - Uma instalação do GTA SA com ModLoader, FLA (com o `fastman92limitAdjuster_GTASA.ini` oficial ao lado do `.asi`) e OLA.
 
 ### Passo a passo
@@ -167,7 +185,8 @@ Os testes não substituem o teste no jogo. O formato de pasta do ModLoader, o ha
 2. Rode os testes: `cargo test --all`.
 3. Veja o diagnóstico da sua instalação: `cargo run -p awr-cli -- doctor --gta "D:\Games\GTA San Andreas"`.
 4. Abra a interface: `npm --prefix ui ci && npm --prefix ui run build`, depois `cargo run -p awr-desktop --release`. Informe a pasta do jogo no botão "GTA SA" e solte a pasta do mod na janela. Para mexer só no visual, `npm --prefix ui run dev` abre `http://localhost:1420` no navegador com dados de exemplo.
-5. Ou use a CLI: `awr-cli inject --name "VW New Beetle" --ref uranus --pack "<pasta do mod>" --gta "<jogo>"` (ou `batch <pasta>` para vários; sem `--yes` só simula).
+5. AppImage local (Linux): `npm --prefix ui ci`, depois `ui/node_modules/.bin/tauri build --bundles appimage` na raiz. O arquivo sai em `target/release/bundle/appimage/`.
+6. Ou use a CLI: `awr-cli inject --name "VW New Beetle" --ref uranus --pack "<pasta do mod>" --gta "<jogo>"` (ou `batch <pasta>` para vários; sem `--yes` só simula).
 
 Carros de packs com recursos do ImVehFt/VehFuncs (rodas variáveis, luzes) precisam desses plugins instalados no jogo.
 
@@ -195,6 +214,7 @@ Sem as fixtures do jogo (como na CI), os testes que dependem delas avisam "pulad
 - [x] Fase 2: interface (importar, lote, tráfego, inventário, health) em egui e, agora, em Tauri + React.
 - [x] Fase 3: armas (pistola, fuzil e arma branca) injetadas, testadas no jogo e removidas sem resíduo; o `gtasa_weapon_config.dat` volta idêntico ao `.bak`.
 - [x] Fase 4: release `.exe` portable (v0.1.0); a CI publica o `.zip` sozinha ao enviar uma tag `v*`.
+- [x] Linux: AppImage publicado na mesma release (v0.3.0); testes da CI também no Ubuntu.
 
 ## 9. Limites de escopo e evolução
 

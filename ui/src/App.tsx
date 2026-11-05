@@ -17,8 +17,13 @@ const toQueueItem = (i: ItemDto): QItem => ({
   soundLike: "",
   shop: null,
   pickups: [],
-  // a lone .txd can only be clothing
-  clothes: i.textureOnly ? defaultClothes(false) : null,
+  // recognised by the game's own clothing list, or a lone .txd (which can only be clothing)
+  clothes: i.clothes
+    ? { bodyPart: i.clothes.bodyPart, model: i.clothes.model, price: i.clothes.price, shops: i.clothes.shops }
+    : i.textureOnly
+      ? defaultClothes(false)
+      : null,
+  suggestion: i.clothes?.from ?? null,
   include: true,
   traffic: { kind: "auto" },
   audio: true,

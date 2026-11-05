@@ -61,6 +61,15 @@ impl InstallInfo {
     pub fn data(&self) -> PathBuf {
         self.root.join("data")
     }
+
+    /// CLEO 4 and its INI plugin, which the clothes catalog script needs (`CLEO.asi` sits in
+    /// the game folder or in `scripts`).
+    pub fn cleo_ok(&self) -> bool {
+        let asi = ["CLEO.asi", "scripts/CLEO.asi"]
+            .iter()
+            .any(|f| self.root.join(f).is_file());
+        asi && self.root.join("CLEO/IniFiles.cleo").is_file()
+    }
 }
 
 pub fn detect_install(root: &Path) -> Result<InstallInfo> {

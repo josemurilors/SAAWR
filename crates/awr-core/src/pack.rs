@@ -20,7 +20,7 @@ pub struct PackFiles {
 }
 
 /// Files of `dir` (not recursive) with the given extension, sorted.
-fn with_ext(dir: &Path, ext: &str) -> Vec<PathBuf> {
+pub(crate) fn with_ext(dir: &Path, ext: &str) -> Vec<PathBuf> {
     let mut v: Vec<PathBuf> = fs::read_dir(dir)
         .into_iter()
         .flatten()

@@ -1,17 +1,17 @@
-//! New CJ clothes (spec: plano roupas). Each item is a folder in `awr-roupas` with its `.txd`
-//! (and maybe a `.dff`) in a `player.img` folder, which ModLoader streams as new clothing,
-//! plus the `.fxt` with its menu name. The shops list it through one shared `shopping.dat`
-//! rebuilt from the enabled items ([`Injector::sync_stores`]).
+//! New CJ clothes, hair and accessories. Each item is a folder in `awr-roupas` with its `.txd`
+//! (and maybe a `.dff`) in a `player.img` folder, which ModLoader streams as new clothing, plus
+//! the `.fxt` with its menu name. Selling and wearing them is the job of the CLEO catalog
+//! ([`crate::catalog`]); nothing goes into the game's `shopping.dat`.
 
+use crate::catalog;
 use crate::error::{AwrError, Result};
 use crate::injector::{io_at, Injector, STAGING};
 use crate::inventory::{self, ModKey, CLOTHES_DIR};
 use crate::meta::{self, Clothes, Files, Meta, ModKind};
-use crate::{fsutil, ide, stores, validators};
+use crate::stores::{self, Original};
+use crate::{fsutil, ide, validators};
 use std::{fs, path::Path, path::PathBuf};
 
-/// Holds the one `shopping.dat` ModLoader merges over the game's.
-pub const STORES_DIR: &str = "awr-lojas";
 /// ModLoader streams files in a folder with this name as new clothing.
 const IMG: &str = "player.img";
 
@@ -26,31 +26,27 @@ pub struct InjectClothes<'a> {
     pub model: Option<&'a str>,
     pub body_part: u8,
     pub price: u32,
+    /// Shop sections that sell it; none: only the wardrobe (cheat ROUPA), free.
     pub shops: &'a [String],
     pub created: &'a str,
 }
 
-/// One shop's free places per body part (`BODY_PARTS` order), for the UI.
+/// A shop of the catalog, for the UI.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ShopSlots {
-    pub section: String,
+pub struct ShopInfo {
+    pub section: &'static str,
+    pub label: &'static str,
     /// `clothes` or `haircuts` (barbers).
     pub kind: &'static str,
-    /// Places left before the shop menu's 12 per body part; past that only trainers show it.
-    pub free: Vec<usize>,
-    /// Another mod changes this shop: AWR leaves it alone (ModLoader merges by line position).
-    pub blocked: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoreInfo {
-    pub shops: Vec<ShopSlots>,
+    pub shops: Vec<ShopInfo>,
     /// `(model, body part)` of the original clothing models, to wear a new texture.
     pub models: Vec<(String, u8)>,
-    /// Price lines left before the game's limit.
-    pub prices_free: usize,
-    /// Price sections (`Clothes`, `Haircuts`) another mod changes: nothing of those can be added.
-    pub blocked: Vec<String>,
+    /// CLEO (and its INI plugin) is installed: the catalog needs it.
+    pub cleo: bool,
 }
 
 /// How a new clothing texture compares with the clothes of the CJ in use.
@@ -71,11 +67,6 @@ pub struct TextureFit {
     pub fit: Fit,
 }
 
-/// Bytes as chars 1:1, so CP-1252 text survives the round trip (like `sync_mod_file`).
-fn text_of(bytes: &[u8]) -> String {
-    bytes.iter().map(|&b| char::from(b)).collect()
-}
-
 /// Lowest free `AWRR000` key (GXT keys are 7 characters at most).
 fn next_gxt(installed: &[Meta]) -> Result<String> {
     (1..1000)
@@ -89,33 +80,19 @@ fn next_gxt(installed: &[Meta]) -> Result<String> {
 }
 
 impl Injector<'_> {
-    fn game_shopping(&self) -> Result<String> {
-        Ok(text_of(&fsutil::read(
-            &self.info.data().join("shopping.dat"),
-        )?))
+    /// The game's own clothes and haircuts (what the suggestions and the originals check use).
+    pub fn clothes_db(&self) -> Vec<Original> {
+        stores::load(&self.info.data())
     }
 
-    /// Other mods' `shopping.dat` that ModLoader would load (disabled folders skipped).
-    fn foreign_shopping(&self) -> Result<Vec<PathBuf>> {
-        fn walk(dir: &Path, depth: u8, out: &mut Vec<PathBuf>) {
-            for d in inventory::read_dirs(dir) {
-                let name = d.file_name().map(|n| n.to_string_lossy().to_lowercase());
-                let name = name.unwrap_or_default();
-                if name.starts_with('.') || name == STORES_DIR {
-                    continue;
-                }
-                let f = d.join("shopping.dat");
-                if name == "data" && f.is_file() {
-                    out.push(f);
-                }
-                if depth > 0 {
-                    walk(&d, depth - 1, out);
-                }
-            }
+    fn require_cleo(&self) -> Result<()> {
+        if self.info.cleo_ok() {
+            return Ok(());
         }
-        let mut out = vec![];
-        walk(&self.modloader()?, 5, &mut out);
-        Ok(out)
+        Err(AwrError::Unhealthy(
+            "CLEO 4 com o plugin IniFiles (CLEO/IniFiles.cleo) não foi encontrado; as roupas novas precisam dele"
+                .into(),
+        ))
     }
 
     /// An original clothing file as the game loads it: a loose override in a ModLoader
@@ -186,23 +163,19 @@ impl Injector<'_> {
     ) -> TextureFit {
         let have = crate::txd::size(txd);
         let stem = file.map(|f| f.trim_end_matches(".txd").to_lowercase());
-        let want = self.game_shopping().ok().and_then(|game| {
-            let originals = stores::originals(&game);
-            let same_part = originals.iter().filter(|(_, _, p)| *p == body_part);
-            let same_name = same_part
-                .clone()
-                .filter(|(t, _, _)| Some(t) == stem.as_ref());
-            let same_model = same_part
-                .clone()
-                .filter(|(_, m, _)| Some(m.as_str()) == model);
-            same_name
-                .chain(same_model)
-                .chain(same_part)
-                .take(6)
-                .find_map(|(tex, _, _)| {
-                    crate::txd::size(&self.active_clothing(&format!("{tex}.txd"))?)
-                })
-        });
+        let db = self.clothes_db();
+        let same_part = db.iter().filter(|o| o.part == body_part);
+        let same_name = same_part
+            .clone()
+            .filter(|o| Some(&o.texture) == stem.as_ref());
+        let same_model = same_part
+            .clone()
+            .filter(|o| Some(o.model.as_str()) == model);
+        let want = same_name
+            .chain(same_model)
+            .chain(same_part)
+            .take(6)
+            .find_map(|o| crate::txd::size(&self.active_clothing(&format!("{}.txd", o.texture))?));
         let fit = match (have, want) {
             (Some((w, h)), Some(want)) if (w, h) != want => {
                 let same_shape =
@@ -227,94 +200,44 @@ impl Injector<'_> {
             .collect())
     }
 
-    /// Free shop places, original models and limits, counting the enabled AWR clothes except
-    /// `skip` (the item being edited).
-    pub fn store_info(&self, skip: Option<&str>) -> Result<StoreInfo> {
-        let game = self.game_shopping()?;
-        let mut touched: Vec<String> = vec![];
-        let mut foreign_prices = 0;
-        for f in self.foreign_shopping()? {
-            let t = text_of(&fsutil::read(&f)?);
-            touched.extend(stores::touched(&game, &t));
-            foreign_prices += stores::prices(&t).saturating_sub(stores::prices(&game));
-        }
-        let ours: Vec<Meta> = self
-            .enabled_clothes()?
-            .into_iter()
-            .filter(|m| Some(m.short.as_str()) != skip)
-            .collect();
-        let items: Vec<&Clothes> = ours.iter().filter_map(|m| m.clothes.as_ref()).collect();
-        let now = stores::build(&game, &items);
-        let is_touched = |s: &str| touched.iter().any(|t| t.eq_ignore_ascii_case(s));
-        Ok(StoreInfo {
-            shops: stores::shops(&game)
-                .into_iter()
-                .map(|(section, kind)| ShopSlots {
-                    kind,
-                    free: stores::BODY_PARTS
-                        .iter()
-                        .map(|&p| {
-                            stores::MAX_PER_PART.saturating_sub(stores::count(&now, &section, p))
-                        })
-                        .collect(),
-                    blocked: is_touched(&section),
-                    section,
+    /// The shops, the original models and whether CLEO is there.
+    pub fn store_info(&self) -> StoreInfo {
+        StoreInfo {
+            shops: stores::SHOPS
+                .iter()
+                .map(|s| ShopInfo {
+                    section: s.section,
+                    label: s.label,
+                    kind: s.kind,
                 })
                 .collect(),
-            models: {
-                let mut m: Vec<(String, u8)> = stores::originals(&game)
-                    .into_iter()
-                    .map(|(_, model, part)| (model, part))
-                    .collect();
-                m.sort();
-                m.dedup();
-                m
-            },
-            prices_free: stores::MAX_PRICES.saturating_sub(stores::prices(&now) + foreign_prices),
-            blocked: [stores::CLOTHES, stores::HAIRCUTS]
-                .into_iter()
-                .filter(|s| is_touched(s))
-                .map(String::from)
-                .collect(),
-        })
+            models: stores::models(&self.clothes_db()),
+            cleo: self.info.cleo_ok(),
+        }
     }
 
-    /// Checks shops, body part and limits for one item (`skip`: itself, when editing).
-    fn check_store(&self, c: &Clothes, skip: Option<&str>) -> Result<()> {
-        let part = stores::BODY_PARTS
-            .iter()
-            .position(|&p| p == c.body_part)
-            .ok_or_else(|| {
-                AwrError::InvalidName(format!("parte do corpo inválida: {}", c.body_part))
-            })?;
-        if c.shops.is_empty() {
-            // worn through the wardrobe script only: shopping.dat and its limits are not touched
-            return Ok(());
-        }
-        let info = self.store_info(skip)?;
-        let section = stores::price_section(c.body_part);
-        if info.blocked.iter().any(|b| b == section) {
+    /// The suggestion for a new item from the names of its files (see [`stores::suggest`]).
+    pub fn suggest_clothes(&self, txd: &Path, dff: Option<&Path>) -> Option<stores::Suggestion> {
+        let stem = |p: &Path| p.file_stem().map(|n| n.to_string_lossy().into_owned());
+        stores::suggest(
+            &self.clothes_db(),
+            &stem(txd)?,
+            dff.and_then(stem).as_deref(),
+        )
+    }
+
+    /// Checks the body part and that every shop exists and sells that kind of item.
+    fn check_store(&self, c: &Clothes) -> Result<()> {
+        if !stores::BODY_PARTS.contains(&c.body_part) {
             return Err(AwrError::InvalidName(format!(
-                "outro mod altera a seção {section} do shopping.dat; desative-o para adicionar este item"
-            )));
-        }
-        if skip.is_none() && info.prices_free == 0 {
-            return Err(AwrError::InvalidName(format!(
-                "o shopping.dat já tem {} itens, o limite do jogo",
-                stores::MAX_PRICES
+                "parte do corpo inválida: {}",
+                c.body_part
             )));
         }
         for name in &c.shops {
-            let s = info
-                .shops
-                .iter()
-                .find(|s| s.section.eq_ignore_ascii_case(name))
-                .ok_or_else(|| {
-                    AwrError::InvalidName(format!("loja de roupas desconhecida: {name}"))
-                })?;
-            if s.kind != stores::shop_type(c.body_part) {
+            if !stores::shop_sells(name, c.body_part) {
                 return Err(AwrError::InvalidName(format!(
-                    "a loja {name} não vende {}",
+                    "a loja {name} não existe ou não vende {}",
                     if c.body_part == stores::HAIR {
                         "cortes de cabelo"
                     } else {
@@ -322,29 +245,18 @@ impl Injector<'_> {
                     }
                 )));
             }
-            if s.blocked {
-                return Err(AwrError::InvalidName(format!(
-                    "outro mod altera a loja {name}; escolha outra"
-                )));
-            }
-            if s.free[part] == 0 {
-                // allowed: the shop menu stops at 12, but trainers list the whole section
-                tracing::warn!(
-                    "loja {name} cheia para essa parte do corpo: só aparece em trainers"
-                );
-            }
         }
         Ok(())
     }
 
     pub fn inject_clothes(&self, req: &InjectClothes) -> Result<ModKey> {
         self.not_running()?;
+        self.require_cleo()?;
         let ml = self.modloader()?;
-        let game = self.game_shopping()?;
-        let originals = stores::originals(&game);
+        let originals = self.clothes_db();
         let taken = self.taken_shorts();
         validators::check_short(req.short, |s| {
-            taken.contains(s) || originals.iter().any(|(t, m, _)| t == s || m == s)
+            taken.contains(s) || originals.iter().any(|o| o.texture == s || o.model == s)
         })?;
         let model = match (req.dff, req.model) {
             (Some(_), _) => req.short.to_string(),
@@ -352,7 +264,7 @@ impl Injector<'_> {
                 let m = m.to_lowercase();
                 if !originals
                     .iter()
-                    .any(|(_, om, p)| *om == m && *p == req.body_part)
+                    .any(|o| o.model == m && o.part == req.body_part)
                 {
                     return Err(AwrError::InvalidName(format!(
                         "'{m}' não é um modelo original dessa parte do corpo"
@@ -378,7 +290,7 @@ impl Injector<'_> {
             shops: req.shops.to_vec(),
             gxt: next_gxt(&installed)?,
         };
-        self.check_store(&clothes, None)?;
+        self.check_store(&clothes)?;
 
         let dest = ml.join(CLOTHES_DIR).join(req.short);
         if dest.exists() {
@@ -461,39 +373,48 @@ impl Injector<'_> {
         };
         c.price = price;
         c.shops = shops.to_vec();
-        if inventory::split_disabled(key).0 {
-            let c = c.clone();
-            self.check_store(&c, Some(&m.short))?;
-        }
+        let c = c.clone();
+        self.check_store(&c)?;
         write_fxt(key, m)
     }
 
-    /// Rebuilds the shared `shopping.dat` from the enabled clothes; gone when it would equal
-    /// the game's.
-    pub(crate) fn sync_stores(&self) -> Result<()> {
+    /// Writes (or takes out) the CLEO catalog: script and texts in ModLoader, the item list in
+    /// the game's `CLEO\AWR-Roupas`. Gone when no clothing item is on; the player's purchases
+    /// (`estado.ini`) stay.
+    pub(crate) fn sync_catalog(&self) -> Result<()> {
         let Ok(ml) = self.modloader() else {
             return Ok(());
         };
-        let dir = ml.join(STORES_DIR).join("data");
-        let path = dir.join("shopping.dat");
+        let dir = ml.join(catalog::CATALOG_DIR);
+        let data = self.info.root.join(catalog::DATA_DIR);
         let metas = self.enabled_clothes()?;
-        if metas.is_empty() && !path.exists() {
+        if metas.is_empty() {
+            let _ = fs::remove_dir_all(&dir);
+            let _ = fs::remove_file(data.join(catalog::CONFIG_FILE));
+            let _ = fs::remove_dir(&data); // only when empty
             return Ok(());
         }
-        let game = self.game_shopping()?;
         let items: Vec<&Clothes> = metas.iter().filter_map(|m| m.clothes.as_ref()).collect();
-        let new = stores::build(&game, &items);
-        if new == game {
-            let _ = fs::remove_dir_all(ml.join(STORES_DIR));
-            return Ok(());
-        }
-        let bytes: Vec<u8> = new.chars().map(|c| c as u8).collect();
-        if fs::read(&path).ok().as_deref() != Some(&bytes[..]) {
-            io_at(&dir, fs::create_dir_all(&dir))?;
-            fsutil::write_atomic(&path, &bytes)?;
-        }
-        Ok(())
+        write_if_changed(
+            &dir.join("cleo").join(catalog::SCRIPT_FILE),
+            catalog::SCRIPT,
+        )?;
+        write_if_changed(&dir.join(catalog::UI_FXT_FILE), catalog::UI_FXT)?;
+        write_if_changed(
+            &data.join(catalog::CONFIG_FILE),
+            catalog::config_ini(&items).as_bytes(),
+        )
     }
+}
+
+fn write_if_changed(path: &Path, bytes: &[u8]) -> Result<()> {
+    if fs::read(path).ok().as_deref() == Some(bytes) {
+        return Ok(());
+    }
+    if let Some(dir) = path.parent() {
+        io_at(dir, fs::create_dir_all(dir))?;
+    }
+    fsutil::write_atomic(path, bytes)
 }
 
 fn write_fxt(dir: &Path, m: &Meta) -> Result<()> {

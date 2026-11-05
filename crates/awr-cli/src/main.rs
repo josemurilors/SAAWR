@@ -19,8 +19,9 @@ const USAGE: &str = "uso: awr-cli <comando> [--gta <pasta do GTA SA>]
   groups
   weapons
   inject-weapon --short <nome> --ref <ARMA, ex. DESERT_EAGLE> (--pack <pasta> | --dff <arq> --txd <arq>) [--no-pack-lines] [--special silencer|jetpack|binoculars] [--sound-like <ARMA>] [--shop [--price n] [--ammo n] [--category 0-10] [--unlock 0-10]] [--pickup 'x y z [municao]' ...] [--cleo]
-  stores   (lojas de roupa/barbearias, vagas por parte do corpo e limite do shopping.dat)
-  inject-clothes --short <nome> --txd <arq> (--dff <arq> | --model <modelo original>) --part <0 torso|1 cabelo|2 calça|3 sapato|13|14|15|16> --shop <seção, ex. Csexl> [--shop ...] [--price n] [--name <nome na loja>]
+  stores   (as lojas do catalogo CLEO, as partes do corpo e se o CLEO esta instalado)
+  clothes <pasta de roupas> [--yes] [--no-shops]   (acha as texturas com nome de roupa do jogo e sugere parte, modelo, preco e lojas; sem --yes so mostra)
+  inject-clothes --short <nome> --txd <arq> (--dff <arq> | --model <modelo original>) --part <0 torso|1 cabelo|2 calça|3 sapato|13|14|15|16> [--shop <seção, ex. Csexl> ...] [--price n] [--name <nome na loja>]   (sem --shop: só o guarda-roupa, de graça)
   batch <pasta com subpastas> [--ref <modelo padrão>] [--yes]
   enable <pasta do mod>
   disable <pasta do mod>
@@ -137,7 +138,7 @@ fn run(args: &[String]) -> Result<(), String> {
         "batch" => {
             let dir = folder()?;
             let fallback = opt(args, "--ref");
-            let found = batch::scan(&dir, &refs, &inj.taken_shorts());
+            let found = batch::scan(&dir, &refs, &inj.clothes_db(), &inj.taken_shorts());
             let yes = args.iter().any(|a| a == "--yes");
             let yes_own_off = args.iter().any(|a| a == "--no-pack-handling");
             let secs = SystemTime::now()
@@ -229,20 +230,67 @@ fn run(args: &[String]) -> Result<(), String> {
             }
         }
         "stores" => {
-            let s = inj.store_info(None).map_err(|e| e.to_string())?;
-            let parts = awr_core::stores::BODY_PARTS;
-            println!("partes: {parts:?}");
-            for x in &s.shops {
-                let lock = if x.blocked {
-                    "  (outro mod altera)"
-                } else {
-                    ""
-                };
-                println!("{:<8} {:<9} vagas {:?}{lock}", x.section, x.kind, x.free);
+            let s = inj.store_info();
+            println!("CLEO com IniFiles: {}", if s.cleo { "sim" } else { "NAO" });
+            println!("partes do corpo: {:?}", awr_core::stores::BODY_PARTS);
+            for (n, x) in awr_core::stores::SHOPS.iter().enumerate() {
+                println!(
+                    "{n} {:<8} {:<9} {:<22} interior {:>2} em ({:.0}, {:.0})",
+                    x.section, x.kind, x.label, x.area, x.x, x.y
+                );
             }
-            println!("preços livres até o limite: {}", s.prices_free);
-            if !s.blocked.is_empty() {
-                println!("seções de preço alteradas por outro mod: {:?}", s.blocked);
+        }
+        "clothes" => {
+            let dir = folder()?;
+            let db = inj.clothes_db();
+            let mut taken = inj.taken_shorts();
+            taken.extend(db.iter().flat_map(|o| [o.texture.clone(), o.model.clone()]));
+            let found = batch::from_paths(&[dir], &refs, &weapons, &db, &mut taken);
+            let yes = args.iter().any(|a| a == "--yes");
+            let no_shops = args.iter().any(|a| a == "--no-shops");
+            let secs = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs());
+            for c in found.iter().filter(|c| c.clothes.is_some()) {
+                let (Some(g), Some(txd)) = (&c.clothes, c.files.txd.as_deref()) else {
+                    continue;
+                };
+                let shops: Vec<String> = if no_shops { vec![] } else { g.shops.clone() };
+                println!(
+                    "{} -> {}: parte {}, {}, US$ {}, lojas {:?} (de {})",
+                    c.name,
+                    c.short,
+                    g.part,
+                    if g.model.is_empty() {
+                        "modelo do pacote".to_string()
+                    } else {
+                        format!("textura no modelo {}", g.model)
+                    },
+                    g.price,
+                    shops,
+                    g.from
+                );
+                if !yes {
+                    continue;
+                }
+                let r = inj.inject_clothes(&InjectClothes {
+                    name: &c.name,
+                    short: &c.short,
+                    txd,
+                    dff: c.files.dff.as_deref(),
+                    model: (!g.model.is_empty()).then_some(g.model.as_str()),
+                    body_part: g.part,
+                    price: g.price,
+                    shops: &shops,
+                    created: &meta::rfc3339(secs),
+                });
+                match r {
+                    Ok(k) => println!("  instalada: {}", k.display()),
+                    Err(e) => println!("  erro: {e}"),
+                }
+            }
+            if !yes {
+                println!("(simulação; use --yes para instalar)");
             }
         }
         "inject-clothes" => {

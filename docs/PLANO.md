@@ -56,7 +56,7 @@ E:\projetos\SAAWR\
 Ordem (cada passo com teste antes do próximo):
 
 1. `git init`, workspace, `.gitattributes`, CI GitHub Actions `cargo fmt --check`,
-   `clippy -D warnings`, `test` (Windows runner).
+   `clippy -D warnings`, `test` (runners Windows e Ubuntu).
 2. **Fixtures**: copiar de `D:\Games\GTA San Andreas\data\` `handling.cfg`,
    `vehicles.ide`, `carcols.dat`, `cargrp.dat`, `default.ide`, `weapon.dat`,
    `object.dat`, e do FLA `gtasa_vehicleAudioSettings.cfg`, `gtasa_weapon_config.dat`,

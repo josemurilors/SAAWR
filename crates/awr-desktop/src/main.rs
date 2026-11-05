@@ -35,6 +35,8 @@ struct Game {
     refs: Vec<VehicleRef>,
     weapons: Vec<WeaponRef>,
     groups: Vec<Group>,
+    /// The game's own clothes and haircuts: the suggestions for new items come from them.
+    clothes_db: Vec<awr_core::stores::Original>,
 }
 
 #[derive(Default)]
@@ -124,7 +126,8 @@ struct ModDto {
     clothes: Option<ClothesDto>,
 }
 
-/// How a clothing item is sold (shop sections and body part as in `shopping.dat`).
+/// How a clothing item is sold by the CLEO catalog: body part (as in `shopping.dat`), price
+/// and the shop sections that sell it (none: only the free wardrobe).
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct ClothesDto {
@@ -138,23 +141,20 @@ struct ClothesDto {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ShopSlotsDto {
-    section: String,
+struct ShopDefDto {
+    section: &'static str,
+    label: &'static str,
     /// "clothes" or "haircuts".
     kind: &'static str,
-    /// Free places per body part, keyed like `bodyPart`.
-    free: HashMap<u8, usize>,
-    blocked: bool,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct StoreInfoDto {
-    shops: Vec<ShopSlotsDto>,
+    shops: Vec<ShopDefDto>,
     models: Vec<(String, u8)>,
-    prices_free: usize,
-    /// Price sections ("Clothes", "Haircuts") another mod changes.
-    blocked: Vec<String>,
+    /// CLEO with its INI plugin is installed (the catalog needs it).
+    cleo: bool,
 }
 
 impl From<StoreInfo> for StoreInfoDto {
@@ -163,22 +163,29 @@ impl From<StoreInfo> for StoreInfoDto {
             shops: s
                 .shops
                 .into_iter()
-                .map(|x| ShopSlotsDto {
-                    free: awr_core::stores::BODY_PARTS
-                        .iter()
-                        .copied()
-                        .zip(x.free)
-                        .collect(),
+                .map(|x| ShopDefDto {
                     section: x.section,
+                    label: x.label,
                     kind: x.kind,
-                    blocked: x.blocked,
                 })
                 .collect(),
             models: s.models,
-            prices_free: s.prices_free,
-            blocked: s.blocked,
+            cleo: s.cleo,
         }
     }
+}
+
+/// What the game's own clothing list suggests for a queued item (see `stores::suggest`).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ClothesGuessDto {
+    body_part: u8,
+    /// Original model to wear the texture on; empty when the pack brings its own `.dff`.
+    model: String,
+    price: u32,
+    shops: Vec<String>,
+    /// The original texture the guess comes from.
+    from: String,
 }
 
 /// A queued clothing texture against the clothes of the CJ in use.
@@ -236,6 +243,8 @@ struct ItemDto {
     weapon: bool,
     /// Only a `.txd`: it can only become clothing.
     texture_only: bool,
+    /// Recognised as clothing, hair or an accessory, with the suggested settings.
+    clothes: Option<ClothesGuessDto>,
     folder: String,
     extras: Extras,
 }
@@ -322,11 +331,13 @@ fn load_game(root: &Path) -> Result<Game, String> {
         .fla_data()
         .and_then(|d| weapons::load_weapons(&info.data(), &d).ok())
         .unwrap_or_default();
+    let clothes_db = awr_core::stores::load(&info.data());
     Ok(Game {
         info,
         refs,
         weapons,
         groups,
+        clothes_db,
     })
 }
 
@@ -496,6 +507,13 @@ fn item_dto(id: u64, c: &Candidate) -> ItemDto {
         reference: c.reference.clone().unwrap_or_default(),
         weapon: c.weapon,
         texture_only: c.files.dff.is_none(),
+        clothes: c.clothes.as_ref().map(|g| ClothesGuessDto {
+            body_part: g.part,
+            model: g.model.clone(),
+            price: g.price,
+            shops: g.shops.clone(),
+            from: g.from.clone(),
+        }),
         folder: c.folder.display().to_string(),
         extras: Extras {
             parts: c.files.parts.is_some(),
@@ -558,7 +576,13 @@ async fn scan_paths(
     let mut queue = state.queue.lock().unwrap();
     taken.extend(queue.values().map(|c| c.short.clone()));
     let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    let found = batch::from_paths(&paths, &g.refs, &g.weapons, &mut taken);
+    // the game's own clothing names are not free either (a new item may not reuse them)
+    taken.extend(
+        g.clothes_db
+            .iter()
+            .flat_map(|o| [o.texture.clone(), o.model.clone()]),
+    );
+    let found = batch::from_paths(&paths, &g.refs, &g.weapons, &g.clothes_db, &mut taken);
     Ok(found
         .into_iter()
         .map(|c| {
@@ -826,14 +850,10 @@ async fn edit_mod(
     .map(|()| "salvo".to_string())
 }
 
-/// Free shop places and original models for the clothing form; `skip` is the short of the
-/// item being edited (its own places count as free).
+/// The catalog's shops, the original models and whether CLEO is there (the clothing form).
 #[tauri::command]
-async fn store_info(
-    skip: Option<String>,
-    state: State<'_, AppState>,
-) -> Result<StoreInfoDto, String> {
-    with_injector(&state, |i| i.store_info(skip.as_deref())).map(Into::into)
+async fn store_info(state: State<'_, AppState>) -> Result<StoreInfoDto, String> {
+    with_injector(&state, |i| Ok(i.store_info())).map(Into::into)
 }
 
 /// Whether the queued item's texture will be scaled to the CJ in use (Proper Player Retex or

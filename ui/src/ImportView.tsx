@@ -220,7 +220,7 @@ function QueueRow({ item, game, problem, p }: { item: QItem; game: GameDto | nul
           )}
         </div>
         {clothes && (
-          <ClothesFields value={item.clothes!} queueId={item.id} ownModel={!item.textureOnly && item.clothes!.model === ""} onChange={(c) => patch({ clothes: c })} />
+          <ClothesFields value={item.clothes!} queueId={item.id} suggestion={item.suggestion} ownModel={!item.textureOnly && item.clothes!.model === ""} onChange={(c) => patch({ clothes: c })} />
         )}
         {clothes && !item.textureOnly && (
           <label className="check">

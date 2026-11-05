@@ -68,7 +68,11 @@ const sample = (): ItemDto[] => [
     extras: { ...none, cleo: true } },
   { id: ++nextId, name: "camiseta azul", short: "camiset", reference: "", weapon: false, textureOnly: true, folder: "C:/mods/roupas",
     extras: none },
-].map((i) => ({ textureOnly: false, ...i }));
+  { id: ++nextId, name: "Rolex", short: "rolex", reference: "", weapon: false, folder: "C:/mods/rolex", extras: none,
+    clothes: { bodyPart: 14, model: "", price: 15, shops: ["CSchp"], from: "watchyellow" } },
+  { id: ++nextId, name: "Dreads", short: "dreads", reference: "", weapon: false, textureOnly: true, folder: "C:/mods/dreads", extras: none,
+    clothes: { bodyPart: 1, model: "cornrows", price: 500, shops: ["barbers"], from: "cornrows" } },
+].map((i) => ({ textureOnly: false, clothes: null, ...i }));
 
 export const mockApi: Api = {
   startup: async () => snap(),
@@ -117,22 +121,21 @@ export const mockApi: Api = {
     mods = mods.filter((m) => m.key !== key);
     return "removido";
   },
-  storeInfo: async () => {
-    await delay(100);
-    const full = { 1: 0, 0: 0, 2: 0, 3: 3, 13: 10, 14: 10, 15: 5, 16: 0 };
-    return {
-      shops: [
-        { section: "CSchp", kind: "clothes", free: full, blocked: false },
-        { section: "CSsprt", kind: "clothes", free: { ...full, 2: 5 }, blocked: false },
-        { section: "Csexl", kind: "clothes", free: { ...full, 0: 5 }, blocked: false },
-        { section: "clothgp", kind: "clothes", free: { ...full, 0: 0, 3: 8 }, blocked: true },
-        { section: "barbers", kind: "haircuts", free: full, blocked: false },
-      ],
-      models: [["cornrows", 1], ["tshirt", 0], ["vest", 0], ["hoodyA", 0], ["legs", 2], ["shorts", 2], ["sneaker", 3], ["glasses01", 15], ["capknit", 16]],
-      pricesFree: 3,
-      blocked: [],
-    };
-  },
+  storeInfo: async () => ({
+    shops: [
+      { section: "CSchp", label: "Binco", kind: "clothes" },
+      { section: "CSsprt", label: "ProLaps", kind: "clothes" },
+      { section: "LACS1", label: "Sub Urban", kind: "clothes" },
+      { section: "clothgp", label: "Zip", kind: "clothes" },
+      { section: "Csdesgn", label: "Victim", kind: "clothes" },
+      { section: "Csexl", label: "Didier Sachs", kind: "clothes" },
+      { section: "barbers", label: "Barbearia Reece's", kind: "haircuts" },
+      { section: "barber2", label: "Barbearia Gay Gordo's", kind: "haircuts" },
+      { section: "barber3", label: "Barbearia Macisla's", kind: "haircuts" },
+    ] as const,
+    models: [["cornrows", 1], ["tshirt", 0], ["vest", 0], ["hoodyA", 0], ["legs", 2], ["shorts", 2], ["sneaker", 3], ["glasses01", 15], ["capknit", 16]] as [string, number][],
+    cleo: true,
+  }),
   textureFit: async (_id, _model, bodyPart) =>
     bodyPart === 2 ? { have: [256, 256], action: "mismatch", want: [512, 1024] } : { have: [256, 256], action: "resize", want: [1024, 1024] },
   restore: async () => "restaurado (3 arquivo(s) do .bak)",

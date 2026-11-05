@@ -371,7 +371,7 @@ impl Injector<'_> {
         for m in inventory::scan(&ml).into_iter().filter(|m| !m.is_foreign()) {
             io_at(&m.key, fs::remove_dir_all(&m.key))?;
         }
-        for d in [STAGING, TRAFFIC_DIR, crate::clothes::STORES_DIR] {
+        for d in [STAGING, TRAFFIC_DIR, crate::catalog::CATALOG_DIR] {
             let _ = fs::remove_dir_all(ml.join(d));
         }
         for d in [
@@ -381,6 +381,7 @@ impl Injector<'_> {
         ] {
             let _ = fs::remove_dir(ml.join(d)); // only when empty: foreign folders stay
         }
+        let _ = fs::remove_dir_all(self.info.root.join(crate::catalog::DATA_DIR));
         let mut files: Vec<PathBuf> = self.info.fla_ini().into_iter().collect();
         if let Some(d) = self.info.fla_data() {
             files.extend([AUDIO_CFG, crate::weapons::CONFIG].map(|n| d.join(n)));
@@ -600,7 +601,7 @@ impl Injector<'_> {
         self.sync_trainer()?;
         self.sync_shop()?;
         self.sync_pickups()?;
-        self.sync_stores()
+        self.sync_catalog()
     }
 
     /// Lists the enabled weapons' pickups in `pick-ups.dat` (no-op without the mod).
@@ -851,35 +852,33 @@ mod tests {
     }
 
     #[test]
-    fn synthetic_clothes_round_trip_and_shop_limits() {
-        use crate::clothes::{InjectClothes, STORES_DIR};
+    fn synthetic_clothes_go_to_the_cleo_catalog_and_back() {
+        use crate::catalog::{CATALOG_DIR, CONFIG_FILE, DATA_DIR, SCRIPT_FILE};
+        use crate::clothes::InjectClothes;
         let (d, info, refs) = synthetic_install();
+        let root = d.path();
         let inj = Injector {
             info: &info,
             refs: &refs,
             weapons: &[],
             id_floor: 12500,
         };
-        // Binco: one torso place left; Didier: free
-        let racks: String = (0..11).map(|i| format!("\t\titem shirt{i}\n")).collect();
-        let prices: String = (0..11)
-            .map(|i| format!("\t\tshirt{i}\t\tSH{i}\t\ttshirt\t\t0\t\trespect 0 \tsexy 0\t\t10\n"))
-            .collect();
-        let game = format!("section prices\n\tsection Clothes\n{prices}\tend\nend\nsection shops\n\tsection CSchp\n\t\ttype clothes\n{racks}\tend\n\tsection Csexl\n\t\ttype clothes\n\tend\nend\n").replace('\n', "\r\n");
+        let ml = info.modloader.clone().unwrap();
+        // the game's own clothes and haircuts (a few made-up lines)
+        let game = "section prices\n\tsection Clothes\n\t\tshirt0\t\tSH0\t\ttshirt\t\t0\t\trespect 0 \tsexy 0\t\t10\n\t\tshirt1\t\tSH1\t\ttshirt\t\t0\t\trespect 0 \tsexy 0\t\t10\n\tend\n\tsection Haircuts\n\t\tcut0\t\tCUT0\t\tcut\t\t1\t\trespect 0 \tsexy 0\t\t99\n\tend\nend\nsection shops\n\tsection CSchp\n\t\ttype clothes\n\t\titem shirt0\n\tend\n\tsection barbers\n\t\ttype haircuts\n\t\titem cut0\n\tend\nend\n".replace('\n', "\r\n");
         let shopping = info.data().join("shopping.dat");
         fs::write(&shopping, &game).unwrap();
         // the CJ in use wears 8x8 clothes; the new texture is 4x4, so it is scaled up
-        let big = crate::txd::sample(8, 8, |_| [1, 2, 3, 255]);
-        fs::create_dir_all(d.path().join("models")).unwrap();
+        fs::create_dir_all(root.join("models")).unwrap();
         fs::write(
-            d.path().join("models/player.img"),
+            root.join("models/player.img"),
             crate::img::build(&[
-                ("shirt0.txd", &big),
+                ("shirt0.txd", &crate::txd::sample(8, 8, |_| [1, 2, 3, 255])),
                 ("shirt1.txd", &crate::txd::sample(16, 16, |_| [0; 4])),
             ]),
         )
         .unwrap();
-        let f = d.path().join("new.txd");
+        let f = root.join("new.txd");
         fs::write(&f, crate::txd::sample(4, 4, |_| [9, 9, 9, 255])).unwrap();
         // a pack's texture named like an original one is compared with that one
         let named = inj.texture_fit(&read(&f), Some("SHIRT1.txd"), Some("tshirt"), 0);
@@ -892,21 +891,44 @@ mod tests {
                 fit: crate::clothes::Fit::Resize { want: (8, 8) }
             }
         );
-        fn req<'a>(short: &'a str, shops: &'a [String], txd: &'a Path) -> InjectClothes<'a> {
+        // and a texture named like an original one gets its part, price and shop as a suggestion
+        let tx = root.join("shirt1.txd");
+        fs::write(&tx, read(&f)).unwrap();
+        let sug = inj.suggest_clothes(&tx, None).unwrap();
+        assert_eq!((sug.part, sug.price, sug.model.as_str()), (0, 10, "tshirt"));
+
+        fn req<'a>(
+            short: &'a str,
+            shops: &'a [String],
+            part: u8,
+            model: &'a str,
+            txd: &'a Path,
+        ) -> InjectClothes<'a> {
             InjectClothes {
                 name: "Camisa Teste",
                 short,
                 txd,
                 dff: None,
-                model: Some("tshirt"),
-                body_part: 0,
+                model: Some(model),
+                body_part: part,
                 price: 7,
                 shops,
                 created: "2026-10-25T00:00:00Z",
             }
         }
-        let (binco, didier) = (["CSchp".to_string()], ["Csexl".to_string()]);
-        let key = inj.inject_clothes(&req("awrtee", &binco, &f)).unwrap();
+        let (binco, barber) = (["CSchp".to_string()], ["barbers".to_string()]);
+        // CLEO missing: nothing is installed
+        let err = inj
+            .inject_clothes(&req("awrtee", &binco, 0, "tshirt", &f))
+            .unwrap_err();
+        assert!(err.to_string().contains("CLEO"), "{err}");
+        fs::write(root.join("CLEO.asi"), b"").unwrap();
+        fs::create_dir_all(root.join("CLEO")).unwrap();
+        fs::write(root.join("CLEO/IniFiles.cleo"), b"").unwrap();
+
+        let key = inj
+            .inject_clothes(&req("awrtee", &binco, 0, "tshirt", &f))
+            .unwrap();
         assert_eq!(
             crate::txd::size(&read(&key.join("player.img/awrtee.txd"))),
             Some((8, 8))
@@ -917,52 +939,68 @@ mod tests {
             "source untouched"
         );
         assert_eq!(read(&key.join("awrtee.fxt")), b"AWRR001 Camisa Teste\r\n");
-        let ours = info
-            .modloader
-            .as_ref()
-            .unwrap()
-            .join(STORES_DIR)
-            .join("data/shopping.dat");
-        let text = String::from_utf8(read(&ours)).unwrap();
-        assert!(text.contains("\t\titem awrtee\r\n\tend"), "{text}");
-        assert!(text.contains("awrtee\t\tAWRR001\t\ttshirt\t\t0"), "{text}");
-        // Binco is full now: still accepted (only trainers show it); a texture name of the game
-        // and a barber for a shirt are refused
-        inj.inject_clothes(&req("awrfull", &binco, &f)).unwrap();
-        let text = String::from_utf8(read(&ours)).unwrap();
-        assert!(text.contains("\t\titem awrfull\r\n"), "{text}");
-        assert!(inj.inject_clothes(&req("shirt3", &didier, &f)).is_err());
-        // no shop: the wardrobe script wears it; nothing goes to shopping.dat
-        let before = read(&ours);
-        let none: [String; 0] = [];
-        inj.inject_clothes(&req("awrfree", &none, &f)).unwrap();
-        assert_eq!(read(&ours), before);
-        let barber = inj
-            .inject_clothes(&req("awrbad", &["barbers".to_string()], &f))
-            .unwrap_err();
-        assert!(barber.to_string().contains("desconhecida"), "{barber}");
-        // another mod changing Didier Sachs blocks it
-        let other = info.modloader.as_ref().unwrap().join("Other/data");
-        fs::create_dir_all(&other).unwrap();
-        fs::write(
-            other.join("shopping.dat"),
-            game.replace(
-                "section Csexl\r\n\t\ttype clothes\r\n",
-                "section Csexl\r\n\t\ttype clothes\r\n\t\titem shirt1\r\n",
+        // the catalog: script and texts in ModLoader, the list where the script reads it
+        let catalog = ml.join(CATALOG_DIR);
+        assert_eq!(
+            read(&catalog.join("cleo").join(SCRIPT_FILE)),
+            crate::catalog::SCRIPT
+        );
+        assert!(catalog.join(crate::catalog::UI_FXT_FILE).is_file());
+        let ini_path = root.join(DATA_DIR).join(CONFIG_FILE);
+        let ini = String::from_utf8(read(&ini_path)).unwrap();
+        assert!(
+            ini.contains(
+                "[Item0]\r\nTex=awrtee\r\nModel=tshirt\r\nPart=0\r\nPrice=7\r\nGxt=AWRR001"
             ),
-        )
-        .unwrap();
-        let err = inj.inject_clothes(&req("awrtwo", &didier, &f)).unwrap_err();
-        assert!(err.to_string().contains("Csexl"), "{err}");
-        fs::remove_dir_all(other.parent().unwrap()).unwrap();
-        inj.inject_clothes(&req("awrtwo", &didier, &f)).unwrap();
+            "{ini}"
+        );
+        assert!(ini.contains("[List0]\r\nCount=1\r\nI0=0"), "{ini}");
+        // shopping.dat is never touched, and no shopping.dat is merged
+        assert_eq!(read(&shopping), game.as_bytes());
+        assert!(!ml.join("awr-lojas/data").exists());
 
+        // a second item, free (no shop), and a haircut; wrong shop kinds and original names fail
+        let none: [String; 0] = [];
+        inj.inject_clothes(&req("awrfree", &none, 0, "tshirt", &f))
+            .unwrap();
+        inj.inject_clothes(&req("awrcut", &barber, 1, "cut", &f))
+            .unwrap();
+        assert!(inj
+            .inject_clothes(&req("shirt1", &binco, 0, "tshirt", &f))
+            .is_err());
+        let bad = inj
+            .inject_clothes(&req("awrbad", &barber, 0, "tshirt", &f))
+            .unwrap_err();
+        assert!(bad.to_string().contains("não vende"), "{bad}");
+        assert!(inj
+            .inject_clothes(&req("awrnom", &binco, 0, "nomodel", &f))
+            .is_err());
+        let ini = String::from_utf8(read(&ini_path)).unwrap();
+        assert!(
+            ini.contains("[List9]\r\nCount=1") && ini.contains("[List6]\r\nCount=1"),
+            "{ini}"
+        );
+        // the player's purchases are theirs: the app never writes nor deletes them
+        let state = root.join(DATA_DIR).join(crate::catalog::STATE_FILE);
+        fs::write(&state, b"[Owned]\r\nawrtee=1\r\n").unwrap();
+
+        // off: out of the list; the last one off takes the script away
         let off = inj.set_enabled(&key, false).unwrap();
-        assert!(!String::from_utf8(read(&ours)).unwrap().contains("awrtee"));
+        assert!(!String::from_utf8(read(&ini_path))
+            .unwrap()
+            .contains("Tex=awrtee"));
         let on = inj.set_enabled(&off, true).unwrap();
-        inj.remove(&on).unwrap();
+        for m in inventory::scan(&ml).iter().filter(|m| !m.is_foreign()) {
+            inj.remove(&m.key).unwrap();
+        }
+        assert!(!catalog.exists() && !ini_path.exists());
+        assert!(state.is_file(), "purchases stay");
+        let _ = on;
+        inj.inject_clothes(&req("awrtee", &binco, 0, "tshirt", &f))
+            .unwrap();
+        assert!(ini_path.is_file());
         inj.restore_originals().unwrap();
-        assert!(!info.modloader.as_ref().unwrap().join(STORES_DIR).exists());
+        assert!(!catalog.exists() && !root.join(DATA_DIR).exists());
         assert_eq!(read(&shopping), game.as_bytes());
     }
 

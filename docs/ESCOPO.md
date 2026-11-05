@@ -41,7 +41,7 @@ Princípios inegociáveis da v2:
 | Serialização | `serde` + `serde_json` (compacto) | `meta.json` |
 | Logging | `tracing` + `tracing-subscriber` | Log em arquivo + console embutido na UI |
 | Testes | `tempdir`/`tempfile`, fixtures de `.cfg/.ini/.ide` | Golden tests por parser |
-| Release | `cargo-dist` (Windows portable .exe primeiro) | CI GitHub Actions já padronizada |
+| Release | `cargo-dist` (Windows portable .exe primeiro; AppImage Linux desde a v0.3.0) | CI GitHub Actions já padronizada |
 
 ---
 

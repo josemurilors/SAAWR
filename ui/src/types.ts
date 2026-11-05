@@ -2,7 +2,8 @@ export type Severity = "warn" | "error";
 export interface Finding { severity: Severity; msg: string }
 /** How a weapon is sold by the Custom Ammu-Nation Mod. */
 export interface Shop { category: number; unlock: number; anim: number; price: number; ammo: number }
-/** How a clothing item is sold: body part and shop sections as in `shopping.dat`. */
+/** How a clothing item is sold by the CLEO catalog: body part (as in `shopping.dat`), price and
+ * the shop sections that sell it (none: only the free wardrobe). */
 export interface Clothes {
   bodyPart: number;
   /** Original model the texture is worn on; "" with the item's own .dff. */
@@ -10,21 +11,22 @@ export interface Clothes {
   price: number;
   shops: string[];
 }
-export interface ShopSlots {
+export interface ShopDef {
   section: string;
+  label: string;
   kind: "clothes" | "haircuts";
-  /** Free places per body part. */
-  free: Record<number, number>;
-  /** Another mod changes this shop: AWR leaves it alone. */
-  blocked: boolean;
 }
 export interface StoreInfo {
-  shops: ShopSlots[];
+  shops: ShopDef[];
   /** [model, body part] of the original clothing models. */
   models: [string, number][];
-  pricesFree: number;
-  /** Price sections ("Clothes", "Haircuts") another mod changes: nothing of those can be added. */
-  blocked: string[];
+  /** CLEO with its INI plugin is installed: the catalog needs it. */
+  cleo: boolean;
+}
+/** What the game's own clothing list suggests for a queued item. */
+export interface ClothesGuess extends Clothes {
+  /** The original texture the guess comes from. */
+  from: string;
 }
 /** A queued clothing texture against the clothes of the CJ in use. */
 export interface TextureFit {
@@ -93,6 +95,8 @@ export interface ItemDto {
   weapon: boolean;
   /** Only a .txd: it can only become clothing. */
   textureOnly: boolean;
+  /** Recognised as clothing, hair or an accessory, with the suggested settings. */
+  clothes: ClothesGuess | null;
   folder: string;
   extras: Extras;
 }
@@ -100,7 +104,7 @@ export type TrafficKind = "auto" | "none" | "group";
 export interface TrafficChoice { kind: TrafficKind; index?: number }
 /** A queue item with what the user can change on it. */
 export type Special = "none" | "silencer" | "jetpack" | "binoculars";
-export interface QItem extends ItemDto {
+export interface QItem extends Omit<ItemDto, "clothes"> {
   /** The user typed the short himself: stop suggesting it from the name. */
   shortEdited: boolean;
   special: Special;
@@ -110,6 +114,8 @@ export interface QItem extends ItemDto {
   pickups: string[];
   /** Set: inject as clothing. */
   clothes: Clothes | null;
+  /** The original texture the clothing settings were suggested from. */
+  suggestion: string | null;
   include: boolean;
   traffic: TrafficChoice;
   audio: boolean;

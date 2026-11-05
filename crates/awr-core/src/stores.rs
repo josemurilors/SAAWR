@@ -1,52 +1,99 @@
-//! New CJ clothes in the game's shops. One `shopping.dat`, rebuilt from the game's own, lists
-//! every enabled AWR clothing item; ModLoader merges it over the game's file.
-//!
-//! ModLoader merges this file line by line *by position*, so a section another mod also
-//! changes can lose lines (and an item without a price crashes the shop). We only add lines at
-//! the end of sections that no other mod touches ([`touched`]).
-//!
-//! Haircuts work the same way, with their own price section and the barber shops.
+//! What the game's own `shopping.dat` says about clothes, hair and the shops that sell them.
+//! It is only read: a new item never goes into that file (the game shows 12 items per body
+//! part, holds 560 prices and ModLoader merges the file by line position). The CLEO catalog
+//! (see `catalog.rs`) sells the items instead; this module gives it the shop list and gives
+//! the app its suggestions (body part, model, price and shops from the original texture).
 
-use crate::meta::Clothes;
-
-/// Body parts that can be sold: torso, legs, shoes, necklace, watch, glasses, hat, hair.
-pub const BODY_PARTS: [u8; 8] = [0, 2, 3, 13, 14, 15, 16, HAIR];
-/// Hair is sold by the barbers, from the `Haircuts` prices.
+/// Body part of hair: sold by the barbers, from the `Haircuts` prices.
 pub const HAIR: u8 = 1;
-/// The shop scripts show at most 12 items of one body part (no original shop has more);
-/// trainers that list the shop sections show the rest too.
-pub const MAX_PER_PART: usize = 12;
-/// `CShopping` holds 560 price lines for the whole file (gta-reversed `NUM_ITEMS`).
-pub const MAX_PRICES: usize = 560;
-/// The price section the clothes live in.
-pub const CLOTHES: &str = "Clothes";
-pub const HAIRCUTS: &str = "Haircuts";
+/// Parts of the body that can be sold: torso, legs, shoes, necklace, watch, glasses, hat, hair.
+pub const BODY_PARTS: [u8; 8] = [0, 2, 3, 13, 14, 15, 16, HAIR];
 
-/// Price section of a body part.
-pub fn price_section(part: u8) -> &'static str {
-    if part == HAIR {
-        HAIRCUTS
-    } else {
-        CLOTHES
+/// A shop the catalog script knows. `area`, `x` and `y` place it in the interior space: the
+/// script compares the player's interior and position (sources: MTA wiki "Interior IDs").
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Shop {
+    /// Section in `shopping.dat` (`CSchp`, `barbers`, ...).
+    pub section: &'static str,
+    pub label: &'static str,
+    /// `clothes` or `haircuts`.
+    pub kind: &'static str,
+    pub area: i32,
+    pub x: f32,
+    pub y: f32,
+}
+
+const fn shop(
+    section: &'static str,
+    label: &'static str,
+    kind: &'static str,
+    area: i32,
+    x: f32,
+    y: f32,
+) -> Shop {
+    Shop {
+        section,
+        label,
+        kind,
+        area,
+        x,
+        y,
     }
 }
 
-/// Shop type (`type clothes` / `type haircuts`) that sells a body part.
-pub fn shop_type(part: u8) -> &'static str {
-    if part == HAIR {
-        "haircuts"
-    } else {
-        "clothes"
-    }
+/// Index = the shop number the script uses (`[Shop<n>]`, `[List<n>]`, `AWRS<n>`).
+pub const SHOPS: [Shop; 9] = [
+    shop("CSchp", "Binco", "clothes", 15, 207.543, -109.004),
+    shop("CSsprt", "ProLaps", "clothes", 3, 207.356, -138.0029),
+    shop("LACS1", "Sub Urban", "clothes", 1, 203.8173, -46.5385),
+    shop("clothgp", "Zip", "clothes", 18, 161.462, -91.394),
+    shop("Csdesgn", "Victim", "clothes", 5, 221.331, -6.6169),
+    shop("Csexl", "Didier Sachs", "clothes", 14, 204.1789, -165.874),
+    shop(
+        "barbers",
+        "Barbearia Reece's",
+        "haircuts",
+        2,
+        411.6259,
+        -21.4332,
+    ),
+    shop(
+        "barber2",
+        "Barbearia Gay Gordo's",
+        "haircuts",
+        3,
+        418.653,
+        -82.639,
+    ),
+    shop(
+        "barber3",
+        "Barbearia Macisla's",
+        "haircuts",
+        12,
+        411.641,
+        -51.846,
+    ),
+];
+
+/// The shop section is one of ours and sells what `part` is.
+pub fn shop_sells(section: &str, part: u8) -> bool {
+    SHOPS
+        .iter()
+        .find(|s| s.section.eq_ignore_ascii_case(section))
+        .is_some_and(|s| s.kind == if part == HAIR { "haircuts" } else { "clothes" })
 }
 
-/// A section inside `section prices` or `section shops`: `body` are its line indices, `end`
-/// the index of its `end` line.
-#[derive(Debug)]
-struct Section<'a> {
-    parent: &'a str,
-    name: &'a str,
-    body: std::ops::Range<usize>,
+/// An item of the game's own clothes or haircuts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Original {
+    /// Texture name (lower case): the item's key in `shopping.dat`.
+    pub texture: String,
+    /// Model it is worn on (lower case).
+    pub model: String,
+    pub part: u8,
+    pub price: u32,
+    /// Sections of the shops that sell it.
+    pub shops: Vec<String>,
 }
 
 fn words(line: &str) -> Vec<&str> {
@@ -56,250 +103,170 @@ fn words(line: &str) -> Vec<&str> {
         .collect()
 }
 
-fn sections<'a>(lines: &[&'a str]) -> Vec<Section<'a>> {
-    let mut out = vec![];
-    let mut stack: Vec<(&str, usize)> = vec![];
-    for (i, l) in lines.iter().enumerate() {
-        match words(l)[..] {
-            ["section", name, ..] => stack.push((name, i + 1)),
+/// Every clothing and haircut price line, with the shops that list it.
+pub fn originals(text: &str) -> Vec<Original> {
+    let mut parents: Vec<String> = vec![];
+    let mut out: Vec<Original> = vec![];
+    let mut sold: Vec<(String, &'static str)> = vec![]; // (texture, our shop section)
+    for line in text.lines() {
+        let w = words(line);
+        match w[..] {
+            [] => {}
+            ["section", name, ..] => parents.push(name.to_ascii_lowercase()),
             ["end", ..] => {
-                if let Some((name, start)) = stack.pop() {
-                    if let Some(&(parent, _)) = stack.last() {
-                        out.push(Section {
-                            parent,
-                            name,
-                            body: start..i,
+                parents.pop();
+            }
+            _ => match parents.iter().map(String::as_str).collect::<Vec<_>>()[..] {
+                ["prices", "clothes" | "haircuts"] => {
+                    if let (Some(&tex), Some(&model), Some(part), Some(price)) = (
+                        w.first(),
+                        w.get(2),
+                        w.get(3).and_then(|p| p.parse::<u8>().ok()),
+                        w.last().and_then(|p| p.parse::<u32>().ok()),
+                    ) {
+                        out.push(Original {
+                            texture: tex.to_lowercase(),
+                            model: model.to_lowercase(),
+                            part,
+                            price,
+                            shops: vec![],
                         });
                     }
                 }
-            }
-            _ => {}
+                ["shops", section] if w[0].eq_ignore_ascii_case("item") && w.len() > 1 => {
+                    if let Some(s) = SHOPS
+                        .iter()
+                        .find(|s| s.section.eq_ignore_ascii_case(section))
+                    {
+                        sold.push((w[1].to_lowercase(), s.section));
+                    }
+                }
+                _ => {}
+            },
         }
+    }
+    for o in &mut out {
+        o.shops = sold
+            .iter()
+            .filter(|(t, _)| *t == o.texture)
+            .map(|(_, s)| s.to_string())
+            .collect();
     }
     out
 }
 
-fn find<'s, 'a>(secs: &'s [Section<'a>], parent: &str, name: &str) -> Option<&'s Section<'a>> {
-    secs.iter()
-        .find(|s| s.parent.eq_ignore_ascii_case(parent) && s.name.eq_ignore_ascii_case(name))
+/// The game's own `data/shopping.dat`, parsed (empty if it cannot be read).
+pub fn load(data: &std::path::Path) -> Vec<Original> {
+    std::fs::read(data.join("shopping.dat")).map_or(vec![], |b| {
+        originals(&b.iter().map(|&c| char::from(c)).collect::<String>())
+    })
 }
 
-/// `(texture, model, body part)` of every clothing and haircut price line.
-pub fn originals(text: &str) -> Vec<(String, String, u8)> {
-    let lines: Vec<&str> = text.lines().collect();
-    let secs = sections(&lines);
-    [CLOTHES, HAIRCUTS]
-        .iter()
-        .filter_map(|n| find(&secs, "prices", n))
-        .flat_map(|s| &lines[s.body.clone()])
-        .filter_map(|l| match words(l)[..] {
-            [tex, _, model, part, ..] => {
-                Some((tex.to_lowercase(), model.to_lowercase(), part.parse().ok()?))
-            }
-            _ => None,
-        })
-        .collect()
+/// `(model, body part)` of the original models, sorted, to wear a new texture on.
+pub fn models(db: &[Original]) -> Vec<(String, u8)> {
+    let mut m: Vec<(String, u8)> = db.iter().map(|o| (o.model.clone(), o.part)).collect();
+    m.sort();
+    m.dedup();
+    m
 }
 
-/// `(section, type)` of the shops that sell clothes or haircuts, in file order. `uniform` is
-/// the missions' outfit list, not a shop.
-pub fn shops(text: &str) -> Vec<(String, &'static str)> {
-    let lines: Vec<&str> = text.lines().collect();
-    sections(&lines)
-        .iter()
-        .filter(|s| {
-            s.parent.eq_ignore_ascii_case("shops") && !s.name.eq_ignore_ascii_case("uniform")
-        })
-        .filter_map(|s| {
-            let kind = lines[s.body.clone()]
-                .iter()
-                .find_map(|l| match words(l)[..] {
-                    ["type", t] if t.eq_ignore_ascii_case("clothes") => Some("clothes"),
-                    ["type", t] if t.eq_ignore_ascii_case("haircuts") => Some("haircuts"),
-                    _ => None,
-                })?;
-            Some((s.name.to_string(), kind))
-        })
-        .collect()
+/// What the app suggests for a new item.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Suggestion {
+    pub part: u8,
+    /// Original model to wear the texture on.
+    pub model: String,
+    pub price: u32,
+    /// Shop sections that sold the original item.
+    pub shops: Vec<String>,
+    /// The original texture (or model) the suggestion comes from.
+    pub from: String,
 }
 
-/// How many items of `part` the shop lists.
-pub fn count(text: &str, shop: &str, part: u8) -> usize {
-    let parts: std::collections::HashMap<String, u8> = originals(text)
-        .into_iter()
-        .map(|(t, _, p)| (t, p))
-        .collect();
-    let lines: Vec<&str> = text.lines().collect();
-    let secs = sections(&lines);
-    let Some(s) = find(&secs, "shops", shop) else {
-        return 0;
+/// The new item is a texture of the same name as an original one (what packs that replace
+/// clothes do), or else a model of the same name as an original model.
+pub fn suggest(db: &[Original], texture: &str, dff: Option<&str>) -> Option<Suggestion> {
+    let texture = texture.to_lowercase();
+    let by_texture = db.iter().find(|o| o.texture == texture);
+    let by_model = || {
+        let m = dff?.to_lowercase();
+        db.iter().find(|o| o.model == m)
     };
-    lines[s.body.clone()]
-        .iter()
-        .filter(|l| match words(l)[..] {
-            ["item", tex, ..] => parts.get(&tex.to_lowercase()) == Some(&part),
-            _ => false,
-        })
-        .count()
-}
-
-/// Price lines in the whole file (the game's 560 limit counts all of them).
-pub fn prices(text: &str) -> usize {
-    let lines: Vec<&str> = text.lines().collect();
-    sections(&lines)
-        .iter()
-        .filter(|s| s.parent.eq_ignore_ascii_case("prices"))
-        .map(|s| {
-            lines[s.body.clone()]
-                .iter()
-                .filter(|l| !words(l).is_empty())
-                .count()
-        })
-        .sum()
-}
-
-/// Sections whose lines differ between the game's file and another mod's copy.
-pub fn touched(game: &str, other: &str) -> Vec<String> {
-    let body = |text: &str| -> Vec<(String, Vec<String>)> {
-        let lines: Vec<&str> = text.lines().collect();
-        sections(&lines)
-            .iter()
-            .map(|s| {
-                let key = format!("{}/{}", s.parent, s.name).to_lowercase();
-                let rows = lines[s.body.clone()]
-                    .iter()
-                    .map(|l| words(l).join(" ").to_lowercase())
-                    .filter(|l| !l.is_empty())
-                    .collect();
-                (key, rows)
-            })
-            .collect()
-    };
-    let (a, b) = (body(game), body(other));
-    let mut out: Vec<String> = b
-        .iter()
-        .filter(|(k, rows)| a.iter().find(|(ka, _)| ka == k).map(|(_, r)| r) != Some(rows))
-        .map(|(k, _)| k.rsplit('/').next().unwrap_or(k).to_string())
-        .collect();
-    out.dedup();
-    out
-}
-
-fn price_line(c: &Clothes) -> String {
-    format!(
-        "\t\t{}\t\t{}\t\t{}\t\t{}\t\trespect 0 \tsexy 0\t\t{}",
-        c.texture, c.gxt, c.model, c.body_part, c.price
-    )
-}
-
-/// The game's `shopping.dat` with each item's price line at the end of the clothes prices
-/// and an `item` line at the end of each shop that sells it. No items: the game's file as is.
-pub fn build(game: &str, items: &[&Clothes]) -> String {
-    if items.is_empty() {
-        return game.to_string();
-    }
-    let eol = if game.contains("\r\n") { "\r\n" } else { "\n" };
-    let lines: Vec<&str> = game.lines().collect();
-    let secs = sections(&lines);
-    // (index of the section's `end` line, lines to put before it)
-    let mut inserts: Vec<(usize, Vec<String>)> = vec![];
-    for name in [CLOTHES, HAIRCUTS] {
-        let new: Vec<String> = items
-            .iter()
-            // an item no shop sells is worn through the wardrobe script, without a price line
-            .filter(|c| price_section(c.body_part) == name && !c.shops.is_empty())
-            .map(|c| price_line(c))
-            .collect();
-        if let (Some(s), false) = (find(&secs, "prices", name), new.is_empty()) {
-            inserts.push((s.body.end, new));
-        }
-    }
-    for s in secs
-        .iter()
-        .filter(|s| s.parent.eq_ignore_ascii_case("shops"))
-    {
-        let new: Vec<String> = items
-            .iter()
-            .filter(|c| c.shops.iter().any(|n| n.eq_ignore_ascii_case(s.name)))
-            .map(|c| format!("\t\titem {}", c.texture))
-            .collect();
-        if !new.is_empty() {
-            inserts.push((s.body.end, new));
-        }
-    }
-    let mut out: Vec<String> = Vec::with_capacity(lines.len() + 16);
-    for (i, l) in lines.iter().enumerate() {
-        for (_, new) in inserts.iter().filter(|(at, _)| *at == i) {
-            out.extend(new.iter().cloned());
-        }
-        out.push(l.to_string());
-    }
-    let mut s = out.join(eol);
-    s.push_str(eol);
-    s
+    let o = by_texture.or_else(by_model)?;
+    Some(Suggestion {
+        part: o.part,
+        model: o.model.clone(),
+        price: o.price,
+        shops: o.shops.clone(),
+        from: if by_texture.is_some() {
+            o.texture.clone()
+        } else {
+            o.model.clone()
+        },
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const DAT: &str = "section prices\r\n\tsection CarMods\r\n\t\tbnt_b_sc_l\t\tBMBLBS\t\trespect 0 \tsexy 0\t\t150\r\n\tend\r\n\tsection Clothes\r\n\t\t# texture nametag model type\r\n\t\tvest\t\tVESTWH\t\tvest\t\t0\t\trespect 2 \tsexy 3\t\t10\r\n\t\tlegsblack\t\tLEGSBL\t\tlegs\t\t2\t\trespect 0 \tsexy 0\t\t10\r\n\tend\r\nend\r\nsection shops\r\n\tsection CSchp # BINCO\r\n\t\ttype clothes\r\n\t\titem vest\r\n\t\titem legsblack\r\n\tend\r\n\tsection carmod1\r\n\ttype CarMods\r\n\t\titem bnt_b_sc_l\r\n\tend\r\nend\r\n";
+    const DAT: &str = "section prices\r\n\tsection CarMods\r\n\t\tbnt_b_sc_l\t\tBMBLBS\t\trespect 0 \tsexy 0\t\t150\r\n\tend\r\n\tsection Clothes\r\n\t\t# texture nametag model type\r\n\t\tvest\t\tVESTWH\t\tvest\t\t0\t\trespect 2 \tsexy 3\t\t10\r\n\t\tlegsblack\t\tLEGSBL\t\tlegs\t\t2\t\trespect 0 \tsexy 0\t\t20 # END\r\n\tend\r\n\tsection Haircuts\r\n\t\tcornrows\t\tCORNROW\t\tcornrows\t\t1\t\trespect 30 \tsexy 30\t\t500\r\n\tend\r\nend\r\nsection shops\r\n\tsection CSchp # BINCO\r\n\t\ttype clothes\r\n\t\titem vest\r\n\t\titem legsblack\r\n\tend\r\n\tsection Csexl\r\n\t\ttype clothes\r\n\t\titem vest\r\n\tend\r\n\tsection uniform\r\n\t\ttype clothes\r\n\t\titem legsblack\r\n\tend\r\n\tsection barbers\r\n\t\ttype haircuts\r\n\t\titem cornrows\r\n\tend\r\nend\r\n";
 
-    fn shirt(shops: &[&str]) -> Clothes {
-        Clothes {
-            texture: "awrtee".into(),
-            model: "vest".into(),
-            body_part: 0,
-            price: 7,
-            shops: shops.iter().map(|s| s.to_string()).collect(),
-            gxt: "AWRR001".into(),
-        }
+    #[test]
+    fn reads_clothes_haircuts_and_the_shops_that_sell_them() {
+        let db = originals(DAT);
+        assert_eq!(db.len(), 3);
+        let vest = &db[0];
+        assert_eq!(
+            (
+                vest.texture.as_str(),
+                vest.model.as_str(),
+                vest.part,
+                vest.price
+            ),
+            ("vest", "vest", 0, 10)
+        );
+        assert_eq!(vest.shops, ["CSchp", "Csexl"]);
+        assert_eq!(db[1].shops, ["CSchp"], "the `uniform` list is not a shop");
+        assert_eq!(
+            (db[2].part, db[2].price, db[2].shops.clone()),
+            (HAIR, 500, vec!["barbers".to_string()])
+        );
     }
 
     #[test]
-    fn reads_clothes_shops_and_counts() {
+    fn suggests_from_the_original_texture_then_the_model() {
+        let db = originals(DAT);
+        let s = suggest(&db, "LEGSBLACK", None).unwrap();
         assert_eq!(
-            originals(DAT),
+            (s.part, s.model.as_str(), s.price, s.from.as_str()),
+            (2, "legs", 20, "legsblack")
+        );
+        let s = suggest(&db, "mynewvest", Some("vest")).unwrap();
+        assert_eq!((s.part, s.from.as_str(), s.shops.len()), (0, "vest", 2));
+        assert!(suggest(&db, "landstal", Some("landstal")).is_none());
+        assert_eq!(
+            models(&db),
             [
-                ("vest".into(), "vest".into(), 0),
-                ("legsblack".into(), "legs".into(), 2)
+                ("cornrows".to_string(), 1),
+                ("legs".into(), 2),
+                ("vest".into(), 0)
             ]
         );
-        assert_eq!(shops(DAT), [("CSchp".to_string(), "clothes")]);
-        assert_eq!((count(DAT, "CSchp", 0), count(DAT, "csCHP", 2)), (1, 1));
-        assert_eq!(prices(DAT), 3);
     }
 
     #[test]
-    fn an_item_without_shops_leaves_the_file_alone() {
-        assert_eq!(build(DAT, &[&shirt(&[])]), DAT);
+    fn shops_sell_what_their_kind_says() {
+        assert!(shop_sells("csexl", 0) && shop_sells("barbers", HAIR));
+        assert!(!shop_sells("barbers", 0) && !shop_sells("CSchp", HAIR) && !shop_sells("nope", 0));
+        // the script finds the shop by interior and position: ProLaps and a barber share area 3
+        let (a, b) = (SHOPS[1], SHOPS[7]);
+        assert_eq!(a.area, b.area);
+        assert!((a.x - b.x).hypot(a.y - b.y) > 140.0);
     }
 
     #[test]
-    fn adds_lines_at_the_end_of_sections_only() {
-        let c = shirt(&["CSchp"]);
-        let out = build(DAT, &[&c]);
-        assert!(out.contains("sexy 0\t\t10\r\n\t\tawrtee\t\tAWRR001\t\tvest\t\t0\t\trespect 0 \tsexy 0\t\t7\r\n\tend"), "{out}");
-        assert!(
-            out.contains("\t\titem legsblack\r\n\t\titem awrtee\r\n\tend"),
-            "{out}"
-        );
-        assert_eq!((count(&out, "CSchp", 0), prices(&out)), (2, 4));
-        // every original line keeps its position, so ModLoader's merge only sees additions
-        let orig: Vec<&str> = DAT.lines().collect();
-        assert_eq!(
-            out.lines()
-                .filter(|l| !l.contains("awrtee"))
-                .collect::<Vec<_>>(),
-            orig
-        );
-        assert_eq!(build(DAT, &[]), DAT);
-        assert_eq!(touched(DAT, &out), ["clothes", "cschp"]);
-        assert!(touched(DAT, &DAT.replace("\r\n", "\n")).is_empty());
-    }
-
-    #[test]
-    fn real_file_has_six_full_torso_racks_but_room_elsewhere() {
+    fn real_game_file_gives_suggestions_for_the_test_packs() {
         if !crate::testutil::have_game_fixtures() {
             return;
         }
@@ -308,22 +275,19 @@ mod tests {
             "/../../fixtures/shopping.dat"
         ))
         .unwrap();
-        let t: String = f.iter().map(|&b| char::from(b)).collect();
-        assert_eq!(shops(&t).iter().filter(|s| s.1 == "clothes").count(), 6);
-        assert_eq!(shops(&t).iter().filter(|s| s.1 == "haircuts").count(), 3);
-        assert!(originals(&t)
+        let db = originals(&f.iter().map(|&b| char::from(b)).collect::<String>());
+        let s = suggest(&db, "watchyellow", None).unwrap();
+        assert_eq!(
+            (s.part, s.model.as_str(), s.price, s.shops.clone()),
+            (14, "watch", 15, vec!["CSchp".to_string()])
+        );
+        let s = suggest(&db, "cornrowsb", Some("cornrows")).unwrap();
+        assert_eq!(
+            (s.part, s.shops.clone()),
+            (HAIR, vec!["barber2".to_string()])
+        );
+        assert!(models(&db)
             .iter()
-            .any(|(t, m, p)| t == "cornrows" && m == "cornrows" && *p == HAIR));
-        let mut hair = shirt(&["barbers"]);
-        hair.body_part = HAIR;
-        let out = build(&t, &[&hair]);
-        assert_eq!(count(&out, "barbers", HAIR), count(&t, "barbers", HAIR) + 1);
-        assert_eq!(touched(&t, &out), ["haircuts", "barbers"]);
-        assert_eq!(prices(&t), 544);
-        assert_eq!(count(&t, "CSchp", 0), MAX_PER_PART);
-        assert_eq!(count(&t, "Csexl", 0), 7);
-        assert_eq!(build(&t, &[]), t);
-        let c = shirt(&["Csexl"]);
-        assert_eq!(touched(&t, &build(&t, &[&c])), ["clothes", "csexl"]);
+            .any(|(m, p)| m == "bikerhelmet" && *p == 16));
     }
 }

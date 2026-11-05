@@ -19,8 +19,8 @@ export interface Api {
   setEnabled(key: string, enabled: boolean): Promise<string>;
   remove(key: string): Promise<string>;
   editMod(key: string, name: string, traffic: TrafficChoice | null, audio: boolean | null, shop: Shop | null, setShop: boolean, pickups: string[] | null, clothes: Clothes | null): Promise<string>;
-  /** Free shop places for clothing; `skip` is the short of the item being edited. */
-  storeInfo(skip: string | null): Promise<StoreInfo>;
+  /** The catalog's shops, the original models and whether CLEO is installed. */
+  storeInfo(): Promise<StoreInfo>;
   /** Whether a queued texture will be scaled to the CJ in use; `model` "" = its own model. */
   textureFit(id: number, model: string, bodyPart: number): Promise<TextureFit>;
   shopDefaults(reference: string): Promise<Shop>;
@@ -42,7 +42,7 @@ const real: Api = {
   remove: (key) => invoke("remove", { key }),
   editMod: (key, name, traffic, audio, shop, setShop, pickups, clothes) =>
     invoke("edit_mod", { key, name, traffic, audio, shop, setShop, pickups, clothes }),
-  storeInfo: (skip) => invoke("store_info", { skip }),
+  storeInfo: () => invoke("store_info"),
   textureFit: (id, model, bodyPart) => invoke("texture_fit", { id, model, bodyPart }),
   shopDefaults: (reference) => invoke("shop_defaults", { reference }),
   repair: () => invoke("repair"),

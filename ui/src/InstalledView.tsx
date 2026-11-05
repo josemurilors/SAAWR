@@ -210,7 +210,7 @@ function EditSheet({ m, game, onClose, onRemove, onCopy, onEdit }: SheetProps) {
       {!weapon && <HudPreview name={name} />}
 
       {clothes && (
-        <ClothesFields value={clothes} onChange={setClothes} ownModel={clothes.model === m.short} skip={m.short} />
+        <ClothesFields value={clothes} onChange={setClothes} ownModel={clothes.model === ""} locked />
       )}
 
       {vehicle && (

@@ -4,6 +4,7 @@ pub mod adopt;
 pub mod audio;
 pub mod batch;
 pub mod cargrp;
+pub mod catalog;
 pub mod checker;
 pub mod clothes;
 pub mod config;
